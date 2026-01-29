@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dockterm-v2"
+version = "0.1.0"
+authors = [
+  { name="Jacopo" },
+]
+description = "A terminal-based Docker Desktop alternative"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console :: Curses",
+]
+dependencies = [
+    "docker>=7.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/TUO_USERNAME/dockterm_v2"
+"Bug Tracker" = "https://github.com/TUO_USERNAME/dockterm_v2/issues"
+
+[project.scripts]
+dockterm = "dockterm_raw_v2.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dockterm_raw_v2*"]
