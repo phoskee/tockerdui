@@ -165,6 +165,7 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
             stdscr.refresh()
     except Exception as e:
         logging.error(f"Error in handle_action: {e}", exc_info=True)
+        state_mgr.set_message(f"Error: {str(e)}")
 
 def main(stdscr):
     logging.info("Main started")
@@ -195,12 +196,18 @@ def main(stdscr):
                     last_h, last_w = h, w
                     split_y = int(h * 0.6)
                     
-                    list_win_h = split_y - 2
-                    if list_win_h > 0:
-                        list_win = curses.newwin(list_win_h, w, 2, 0)
-                    detail_win_h = h - split_y - 1
-                    if detail_win_h > 0:
-                        detail_win = curses.newwin(detail_win_h, w, split_y, 0)
+                    if h < 10 or w < 20:
+                        stdscr.addstr(0, 0, "Terminal too small!")
+                        list_win = None
+                        detail_win = None
+                    else:
+                        list_win_h = split_y - 2
+                        if list_win_h > 0:
+                            list_win = curses.newwin(list_win_h, w, 2, 0)
+                        
+                        detail_win_h = h - split_y - 1
+                        if detail_win_h > 0:
+                            detail_win = curses.newwin(detail_win_h, w, split_y, 0)
 
                 # Draw components
                 draw_header(stdscr, w, state.selected_tab)

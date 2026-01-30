@@ -163,58 +163,39 @@ class DockerBackend:
 
     def rename_container(self, container_id: str, new_name: str):
         if not self.client or not new_name: return
-        try:
-            self.client.containers.get(container_id).rename(new_name)
-        except Exception: pass
+        self.client.containers.get(container_id).rename(new_name)
 
     def commit_container(self, container_id: str, repository: str, tag: str = None):
         if not self.client or not repository: return
-        try:
-            self.client.containers.get(container_id).commit(repository=repository, tag=tag)
-        except Exception: pass
+        self.client.containers.get(container_id).commit(repository=repository, tag=tag)
 
     def copy_to_container(self, container_id: str, src_path: str, dest_path: str):
         if not self.client or not src_path or not dest_path: return
-        try:
-            c = self.client.containers.get(container_id)
-            
-            # Create a tar archive of the source
-            tar_stream = io.BytesIO()
-            with tarfile.open(fileobj=tar_stream, mode='w') as tar:
-                tar.add(src_path, arcname=os.path.basename(src_path))
-            tar_stream.seek(0)
-            
-            c.put_archive(path=dest_path, data=tar_stream)
-        except Exception: pass
-
-    def remove_image(self, image_id: str):
-        self.client.images.remove(image_id, force=True)
-
-    def pull_image(self, image_tag: str):
-        if not self.client: return
-        self.client.images.pull(image_tag)
+        c = self.client.containers.get(container_id)
+        
+        # Create a tar archive of the source
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+            tar.add(src_path, arcname=os.path.basename(src_path))
+        tar_stream.seek(0)
+        
+        c.put_archive(path=dest_path, data=tar_stream)
 
     def save_image(self, image_id: str, file_path: str):
         if not self.client or not file_path: return
-        try:
-            image = self.client.images.get(image_id)
-            with open(file_path, 'wb') as f:
-                for chunk in image.save():
-                    f.write(chunk)
-        except Exception: pass
+        image = self.client.images.get(image_id)
+        with open(file_path, 'wb') as f:
+            for chunk in image.save():
+                f.write(chunk)
 
     def load_image(self, file_path: str):
         if not self.client or not file_path: return
-        try:
-            with open(file_path, 'rb') as f:
-                self.client.images.load(f)
-        except Exception: pass
+        with open(file_path, 'rb') as f:
+            self.client.images.load(f)
         
     def build_image(self, path: str, tag: str):
         if not self.client or not path: return
-        try:
-            self.client.images.build(path=path, tag=tag)
-        except Exception: pass
+        self.client.images.build(path=path, tag=tag)
 
     def remove_volume(self, volume_name: str):
         v = self.client.volumes.get(volume_name)
@@ -226,27 +207,18 @@ class DockerBackend:
 
     def prune_all(self):
         if not self.client: return
-        try:
-            self.client.containers.prune()
-            self.client.images.prune()
-            self.client.volumes.prune()
-            self.client.networks.prune()
-        except Exception:
-            pass
+        self.client.containers.prune()
+        self.client.images.prune()
+        self.client.volumes.prune()
+        self.client.networks.prune()
 
     def run_container(self, image_id: str, name: str = None):
         if not self.client: return
-        try:
-            if name:
-                self.client.containers.run(image_id, detach=True, name=name)
-            else:
-                self.client.containers.run(image_id, detach=True)
-        except Exception:
-            pass
+        if name:
+            self.client.containers.run(image_id, detach=True, name=name)
+        else:
+            self.client.containers.run(image_id, detach=True)
 
     def create_volume(self, name: str):
         if not self.client: return
-        try:
-            self.client.volumes.create(name=name)
-        except Exception:
-            pass
+        self.client.volumes.create(name=name)

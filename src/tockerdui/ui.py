@@ -45,14 +45,16 @@ def draw_footer(stdscr, width, height, state: AppState):
     stdscr.move(bar_y, 0)
     stdscr.clrtoeol()
     
-    # Sort Indicator
-    sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
-    
-    if state.is_filtering:
+    # Message / Error
+    if state.message:
+         stdscr.addstr(bar_y, 0, f" {state.message} ", curses.color_pair(3) | curses.A_BOLD)
+    elif state.is_filtering:
         label = " FILTERING: "
         stdscr.addstr(bar_y, 0, label, curses.color_pair(7) | curses.A_BOLD)
         stdscr.addstr(bar_y, len(label), f" {state.filter_text} ", curses.A_BOLD)
     else:
+        # Sort Indicator
+        sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
         # Shortcut bar
         help_txt = " Enter: Menu | F1-F5: Tabs | /: Filter | S: Sort | P: Prune | q: Quit "
         stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))

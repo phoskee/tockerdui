@@ -40,6 +40,10 @@ class StateManager:
     def set_logs(self, logs):
         with self._lock: self._state.logs = logs
 
+    def set_message(self, message: str):
+        with self._lock:
+            self._state.message = message
+
     def set_tab(self, tab):
         with self._lock:
             self._state.selected_tab = tab
@@ -47,6 +51,7 @@ class StateManager:
             self._state.scroll_offset = 0
             self._state.filter_text = ""
             self._state.is_filtering = False
+            self._state.message = "" # Clear message on tab switch
 
     def set_filtering(self, active: bool):
         with self._lock:
@@ -182,12 +187,16 @@ class BackgroundWorker(threading.Thread):
         counter = 0
         while self.running:
             try:
+                # Fast loop (1s): Containers always
                 containers = self.backend.get_containers()
                 self.state_manager.update_containers(containers)
-                self.state_manager.update_images(self.backend.get_images())
-                self.state_manager.update_volumes(self.backend.get_volumes())
-                self.state_manager.update_networks(self.backend.get_networks())
-                self.state_manager.update_composes(self.backend.get_composes())
+                
+                # Slow loop (5s): Images, Volumes, Networks, Composes
+                if counter % 5 == 0:
+                    self.state_manager.update_images(self.backend.get_images())
+                    self.state_manager.update_volumes(self.backend.get_volumes())
+                    self.state_manager.update_networks(self.backend.get_networks())
+                    self.state_manager.update_composes(self.backend.get_composes())
                 
                 if counter % 2 == 0:
                     for c in containers:
