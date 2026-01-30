@@ -379,6 +379,7 @@ def action_menu(stdscr, cy, cx, tab, item_id):
         elif key == 27: return None
 
 def draw_help_modal(stdscr, cy, cx):
+    lines = [
         " tockerdui HELP ",
         "------------------",
         " Navigation:",
