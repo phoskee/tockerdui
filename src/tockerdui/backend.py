@@ -350,6 +350,7 @@ class DockerBackend:
         self.client.images.prune()
         self.client.volumes.prune()
         self.client.networks.prune()
+        cache_manager.invalidate()  # Invalidate all caches as prune affects everything
 
     def run_container(self, image_id: str, name: str = None):
         if not self.client: return

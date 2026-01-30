@@ -409,6 +409,8 @@ class ListWorker(threading.Thread):
         self._force_refresh_flag = True
 
     def run(self) -> None:
+        import logging
+        logger = logging.getLogger(__name__)
         counter = 0
         # Check updates once at startup
         if self.backend.check_for_updates():
@@ -445,8 +447,9 @@ class ListWorker(threading.Thread):
                     cache_manager.cleanup_expired()
                     cleanup_counter = 0
                     
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"ListWorker error: {e}", exc_info=True)
+                time.sleep(1.0)
             
             counter += 1
             time.sleep(0.5)
@@ -544,6 +547,8 @@ class StatsWorker(threading.Thread):
         self.running = True
 
     def run(self) -> None:
+        import logging
+        logger = logging.getLogger(__name__)
         # Slower loop, independent of UI/Resources
         while self.running:
             try:
@@ -558,12 +563,15 @@ class StatsWorker(threading.Thread):
                     try:
                         cpu, ram = self.backend.get_container_stats(c.id)
                         self.state_manager.update_container_stats(c.id, cpu, ram)
-                    except: pass
-                    # Sleep slightly between stats to yield CPU? Not strictly necessary if GIL released by I/O
-                    # but good practice to avoid lock contention
+                    except Exception as e:
+                         # Single container stat failure shouldn't break loop
+                         pass 
+                    # Sleep slightly between stats to yield CPU
                     time.sleep(0.1) 
                 
                 # If no containers or after loop, sleep a bit
                 time.sleep(2.0)
-            except Exception:
+            except Exception as e:
+                logger.error(f"StatsWorker error: {e}", exc_info=True)
                 time.sleep(1.0)
+    

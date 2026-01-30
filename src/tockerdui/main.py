@@ -176,93 +176,102 @@ def main(stdscr):
 
                 key = stdscr.getch()
                 if key == curses.ERR: continue 
+                
+                # Convert key to char safely
+                key_char = ""
+                try:
+                    if 0 < key < 256:
+                        key_char = chr(key)
+                except ValueError:
+                    pass
 
-                if key == ord('q') and not state.is_filtering:
+                # Quit
+                if config_manager.is_key_binding(key_char, 'quit') and not state.is_filtering:
                     logging.info("Quitting")
                     list_worker.running = False
                     logs_worker.running = False
                     stats_worker.running = False
                     break
                 
+                # Filtering mode
                 if state.is_filtering:
-                    if key == 27: state_mgr.set_filtering(False)
-                    elif key in (10, 13): state_mgr.set_filtering(False)
+                    if key == 27: state_mgr.set_filtering(False) # ESC always exits filter
+                    elif key in (10, 13): state_mgr.set_filtering(False) # Enter confirms
                     elif key in (curses.KEY_BACKSPACE, 127):
                         state_mgr.set_filter_text(state.filter_text[:-1])
                     elif 32 <= key <= 126:
                         state_mgr.set_filter_text(state.filter_text + chr(key))
                     continue
 
+                # Auto-update modal
                 if state.update_available:
                      try:
-                         # Acquire lock to prevent state changes during modal
                          state_mgr.acquire_lock()
                          try:
                              draw_update_modal(stdscr, h//2, w//2)
                              curses.doupdate()
-                             # Blocking wait for Y/N (with lock held)
                              while True:
-                                 key = stdscr.getch()
-                                 if key in (ord('y'), ord('Y'), 10, 13):
+                                 k = stdscr.getch()
+                                 k_char = chr(k) if 0 < k < 256 else ""
+                                 if k_char.lower() == 'y' or k in (10, 13):
                                      stdscr.clear()
                                      stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
                                      stdscr.refresh()
-                                     state_mgr.release_lock()  # Release before update
+                                     state_mgr.release_lock()
                                      backend.perform_update()
-                                     return # Exit to restart
-                                 elif key in (ord('n'), ord('N'), 27):
+                                     return 
+                                 elif k_char.lower() == 'n' or k == 27:
                                      state_mgr.set_update_available(False)
-                                     stdscr.clear() # clear modal artifacts
+                                     stdscr.clear()
                                      break
                          finally:
                              state_mgr.release_lock()
-                     except NameError:
-                         # Fallback if UI not updated
-                         logging.error("draw_update_modal not defined")
+                     except Exception as e:
+                         logging.error(f"Update modal error: {e}")
                          state_mgr.set_update_available(False)
                      continue
 
+                # Tab switching (1-6 hardcoded for now as standard TUI convention)
                 elif key == ord('1'): state_mgr.set_tab("containers")
                 elif key == ord('2'): state_mgr.set_tab("images")
                 elif key == ord('3'): state_mgr.set_tab("volumes")
                 elif key == ord('4'): state_mgr.set_tab("networks")
                 elif key == ord('5'): state_mgr.set_tab("compose")
                 elif key == ord('6'): state_mgr.set_tab("stats")
-                elif key == ord('\t') or key == 9:
+                
+                # Navigation & Actions via Config
+                elif config_manager.is_key_binding(key_char, 'tab_focus') or key == 9:
                     state_mgr.toggle_focus()
                 
-                elif key == ord('b') or key == ord('B'):
-                    # Toggle bulk select mode
+                elif config_manager.is_key_binding(key_char, 'bulk_mode'):
                     state_mgr.toggle_bulk_select_mode()
                 
-                elif key == ord(' '):
-                    # Space to toggle selection in bulk mode
+                elif config_manager.is_key_binding(key_char, 'select_toggle'):
                     if state.is_filtering:
                         state_mgr.set_filter_text(state.filter_text + ' ')
                     else:
                         state_mgr.toggle_item_selection()
                 
-                elif key == ord('a') or key == ord('A'):
-                    # Select all in bulk mode
+                elif config_manager.is_key_binding(key_char, 'select_all'):
                     if state.bulk_select_mode:
                         state_mgr.select_all_items()
                 
-                elif key == ord('d') or key == ord('D'):
-                    # Deselect all in bulk mode (only in bulk mode, not for delete action)
+                elif config_manager.is_key_binding(key_char, 'select_none'):
                     if state.bulk_select_mode:
                         state_mgr.deselect_all_items()
                 
-                elif key == curses.KEY_UP:
+                # Navigation Keys
+                elif key == curses.KEY_UP or config_manager.is_key_binding(key_char, 'up'):
                     split_y = int(h * 0.6)
                     if state.focused_pane == "list":
                         page_height = max(1, (split_y - 2))
                         state_mgr.move_selection(-1, page_height)
                     else:
                         detail_h = h - split_y - 1
-                        logs_h = max(1, detail_h - 5) # approx header
+                        logs_h = max(1, detail_h - 5)
                         state_mgr.scroll_logs(-1, logs_h)
                 
-                elif key == curses.KEY_DOWN:
+                elif key == curses.KEY_DOWN or config_manager.is_key_binding(key_char, 'down'):
                     split_y = int(h * 0.6)
                     if state.focused_pane == "list":
                         page_height = max(1, (split_y - 2))
@@ -272,7 +281,7 @@ def main(stdscr):
                         logs_h = max(1, detail_h - 5)
                         state_mgr.scroll_logs(1, logs_h)
                 
-                elif key == curses.KEY_PPAGE: # Page Up
+                elif key == curses.KEY_PPAGE or config_manager.is_key_binding(key_char, 'page_up'):
                     split_y = int(h * 0.6)
                     if state.focused_pane == "list":
                         page_height = max(1, (split_y - 2))
@@ -282,7 +291,7 @@ def main(stdscr):
                         logs_h = max(1, detail_h - 5)
                         state_mgr.scroll_logs(-logs_h, logs_h)
                 
-                elif key == curses.KEY_NPAGE: # Page Down
+                elif key == curses.KEY_NPAGE or config_manager.is_key_binding(key_char, 'page_down'):
                     split_y = int(h * 0.6)
                     if state.focused_pane == "list":
                         page_height = max(1, (split_y - 2))
@@ -291,18 +300,23 @@ def main(stdscr):
                         detail_h = h - split_y - 1
                         logs_h = max(1, detail_h - 5)
                         state_mgr.scroll_logs(logs_h, logs_h)
-                elif key == ord('h') or key == ord('?'): 
+
+                elif config_manager.is_key_binding(key_char, 'help'):
                     draw_help_modal(stdscr, h//2, w//2)
                     stdscr.clearok(True)
                     stdscr.refresh()
-                elif key == ord('/'): state_mgr.set_filtering(True)
-                elif key == 27: state_mgr.set_filter_text("")
-                elif key == ord('s') and state.selected_tab == "containers" and not state.bulk_select_mode: 
-                    backend.start_container(state_mgr.get_selected_item_id())
-                elif key == ord('S'): state_mgr.cycle_sort_mode()
-                elif key == ord('P') and not state.bulk_select_mode: backend.prune_all()
                 
-                elif key in (10, 13): # Enter
+                elif config_manager.is_key_binding(key_char, 'filter'):
+                    state_mgr.set_filtering(True)
+                
+                elif key == 27: # ESC
+                    state_mgr.set_filter_text("")
+                
+                elif key == ord('S'): # Sort (Upper S, distinct from start)
+                     state_mgr.cycle_sort_mode()
+
+                # Action Menu (Enter)
+                elif config_manager.is_key_binding(key_char, 'enter') or key in (10, 13):
                     if state.bulk_select_mode:
                         selected_ids = state_mgr.get_selected_items()
                         action_key = action_menu(stdscr, h//2, w//2, state.selected_tab, None, True)
@@ -323,14 +337,19 @@ def main(stdscr):
                                 list_worker.force_refresh()
                 
                 else:
-                    # Handle remaining single-key actions for non-bulk mode
+                    # Pass through for direct hotkeys (start, stop, remove, etc.)
+                    # Logic is now delegated to handle_action dispatcher
                     item_id = state_mgr.get_selected_item_id()
-                    if state.selected_tab == "images" and (key == ord('B') or key == ord('L')):
-                        handle_action(chr(key), state.selected_tab, None, backend, stdscr, state_mgr, state, list_worker)
-                        continue
                     
-                    if item_id and not state.bulk_select_mode:
-                         handle_action(chr(key) if 32 <= key <= 126 else key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
+                    # Some actions don't need an item (Global image actions)
+                    if state.selected_tab == "images" and (key_char in ['B', 'L']):
+                         handle_action(key_char, state.selected_tab, None, backend, stdscr, state_mgr, state, list_worker)
+                         continue
+
+                    # Dispatch if we have a valid key char and item (or if bulk mode handles it via handle_action logic)
+                    if key_char and 32 <= key <= 126:
+                        # handle_action will check for bulk_select_mode internal logic too
+                         handle_action(key_char, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
              
             except KeyboardInterrupt:
                 logging.info("KeyboardInterrupt caught, exiting...")

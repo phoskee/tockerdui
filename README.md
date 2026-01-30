@@ -1,24 +1,27 @@
 # 🐳 tockerdui
 
-**tockerdui** è un'alternativa leggera, veloce e interamente basata su terminale a Docker Desktop. Gestisci i tuoi container, immagini, volumi e reti con la velocità della tastiera.
+**tockerdui** is a lightweight, fast, and entirely terminal-based alternative to Docker Desktop. Manage your containers, images, volumes, and networks with the speed of your keyboard.
+
+> **The Story**: tockerdui was born out of the frustration of having to run dozens of Docker CLI commands to get an overview, often receiving fragmented information that is difficult to read quickly. It is designed for those who want the power of Docker without having to memorize every CLI flag, and for all those environments (headless servers, remote SSH connections, resource-constrained systems) where Docker Desktop is not available or its GUI is too heavy.
 
 <!-- ![tockerdui UI](https://via.placeholder.com/800x400?text=tockerdui+ +TUI) -->
 
-## ✨ Caratteristiche Principali
+## ✨ Key Features
 
-- **Interfaccia Multi-Tab**: Naviga tra Container, Immagini, Volumi, Reti e Progetti Compose.
-- **Menu Azioni Rapide**: Premi `Invio` su qualsiasi elemento per vedere cosa puoi farci.
-- **Statistiche in Tempo Reale**: Monitora CPU e RAM dei container mentre lavorano.
-- **Log Interattivi**: Visualizzazione log a schermo intero con ricerca e scroll fluido.
-- **Gestione Compose**: Avvia, ferma e aggiorna i tuoi progetti `docker-compose`.
-- **Flicker-Free**: Rendering ottimizzato per evitare sfarfallii del terminale.
-- **Filtro Istantaneo**: Cerca e filtra velocemente in ogni lista.
+- **Multi-Tab Interface**: Navigate through Containers, Images, Volumes, Networks, Compose Projects, and Stats.
+- **Bulk Selection**: Manage multiple items simultaneously (mass start, stop, removal).
+- **Quick Action Menu**: Press `Enter` on any item to see available actions.
+- **Real-Time Stats**: Monitor container CPU and RAM usage directly.
+- **Interactive Logs**: Full-screen log viewer with search and smooth scrolling.
+- **Compose Management**: Start, stop, and refresh your `docker-compose` projects.
+- **Flicker-Free**: Optimized rendering to avoid terminal flickering.
+- **Instant Filter**: Quickly search and filter through every list.
 
 ---
 
-## 🚀 Installazione Rapida
+## 🚀 Quick Installation
 
-Per installare tockerdui e averlo disponibile come comando globale:
+To install tockerdui and have it available as a global command:
 
 ```bash
 git clone https://github.com/phoskee/tockerdui.git
@@ -26,24 +29,24 @@ cd tockerdui
 ./install.sh
 ```
 
-Questo installerà l'applicazione in `~/.local/share/tockerdui` e creerà un link simbolico in `~/.local/bin`. Assicurati che `~/.local/bin` sia nel tuo PATH.
+This will install the application in `~/.local/share/tockerdui` and create a symbolic link in `~/.local/bin`. Ensure that `~/.local/bin` is in your PATH.
 
-## 🔄 Aggiornamento
+## 🔄 Updating
 
-Per aggiornare l'applicazione all'ultima versione:
+To update the application to the latest version:
 
 ```bash
 cd tockerdui
 ./update.sh
 ```
 
-Dopo l'installazione, riavvia il terminale o scrivi `source ~/.bashrc` (o `~/.zshrc`).
+After installation, restart your terminal or run `source ~/.bashrc` (or `~/.zshrc`).
 
 ---
 
-## 🗑️ Disinstallazione
+## 🗑️ Uninstallation
 
-Se desideri rimuovere tockerdui dal tuo sistema:
+If you wish to remove tockerdui from your system:
 
 ```bash
 ./uninstall.sh
@@ -51,51 +54,62 @@ Se desideri rimuovere tockerdui dal tuo sistema:
 
 ---
 
-## ⌨️ Come Usarlo (Keybindings)
+## ⌨️ How to Use (Keybindings)
 
-### Navigazione Generale
+### General Navigation
 
-| Tasto       | Azione                                             |
-| ----------- | -------------------------------------------------- |
-| `F1` - `F5` | Cambia Tab (Containers, Images, Vol, Net, Compose) |
-| `↑` / `↓`   | Naviga nella lista                                 |
-| `Invio`     | **Apri Menu Azioni** (Consigliato)                 |
-| `/`         | Attiva Filtro / Ricerca                            |
-| `Esc`       | Pulisce filtro o chiude menu                       |
-| `h` o `?`   | Mostra aiuto rapido                                |
-| `q`         | Esci da tockerdui                                  |
+| Key        | Action                                                    |
+| ---------- | --------------------------------------------------------- |
+| `1` - `6`  | Change Tab (Containers, Images, Vol, Net, Compose, Stats) |
+| `↑` / `↓`  | Navigate the list                                         |
+| `Enter`    | **Open Action Menu** (Recommended)                        |
+| `/`        | Activate Filter / Search                                  |
+| `Esc`      | Clear filter or close menu                                |
+| `Tab`      | Toggle Focus between list and logs/details                |
+| `h` or `?` | Show quick help                                           |
+| `q`        | Exit tockerdui                                            |
 
-### Scorciatoie Container
+### Multi-Selection (Bulk Mode)
 
-| Tasto | Azione                              |
-| ----- | ----------------------------------- |
-| `s`   | Avvia (Start)                       |
-| `t`   | Ferma (Stop)                        |
-| `r`   | Riavvia (Restart)                   |
-| `z`   | Pausa / Riprendi                    |
-| `l`   | Visualizza Log (Interattivo)        |
-| `x`   | Apri Shell (`exec /bin/bash`)       |
-| `n`   | Rinomina Container                  |
-| `k`   | Commit (Crea immagine da container) |
-| `cp`  | Copia file nel container            |
+| Key     | Action                       |
+| ------- | ---------------------------- |
+| `b`     | Toggle Multi-Selection Mode  |
+| `Space` | Select/Deselect current item |
+| `a`     | Select all items in the list |
+| `d`     | Deselect all items           |
 
-### Scorciatoie Immagini
+### Container Shortcuts
 
-| Tasto     | Azione                            |
-| --------- | --------------------------------- |
-| `R`       | Esegui (Run) come nuovo container |
-| `p`       | Pull / Aggiorna immagine          |
-| `H`       | Visualizza Storia (History)       |
-| `B`       | Build da Dockerfile               |
-| `S` / `L` | Salva / Carica immagine (.tar)    |
+| Key  | Action                               |
+| ---- | ------------------------------------ |
+| `s`  | Start                                |
+| `t`  | Stop                                 |
+| `r`  | Restart                              |
+| `z`  | Pause / Unpause                      |
+| `l`  | View Logs (Interactive)              |
+| `x`  | Open Shell (`exec /bin/bash`)        |
+| `n`  | Rename Container                     |
+| `k`  | Commit (Create image from container) |
+| `cp` | Copy file to container               |
+
+### Image Shortcuts
+
+| Key | Action                 |
+| --- | ---------------------- |
+| `R` | Run as a new container |
+| `p` | Pull / Update image    |
+| `H` | View History           |
+| `B` | Build from Dockerfile  |
+| `L` | Load image (.tar)      |
+| `S` | Save image (.tar)      |
 
 ---
 
-## 🛠 Azioni Globali
+## 🛠 Global Actions
 
-- **Pruning**: Premi `Shift + P` per pulire tutte le risorse Docker inutilizzate (container fermi, immagini orfane, ecc.).
-- **Inspect**: Premi `i` su qualsiasi risorsa per vedere la sua configurazione JSON completa.
+- **Pruning**: Press `Shift + P` to clean all unused Docker resources (stopped containers, orphaned images, etc.).
+- **Inspect**: Press `i` on any resource to view its complete JSON configuration.
 
-## 📄 Licenza
+## 📄 License
 
-Distribuito sotto licenza **MIT**. Vedi il file `LICENSE` per dettagli.
+Distributed under the **MIT** license. See the `LICENSE` file for details.
