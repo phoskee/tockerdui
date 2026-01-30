@@ -225,9 +225,16 @@ def draw_list(win, state: AppState):
         # Render header
         win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
         
+        # Calculate offset based on mode (Bulk uses "[x] " = 4 chars + padding, Normal uses " * " = 3 chars + padding)
+        # Bulk: x=1..5 used. Content starts at 7.
+        # Normal: x=1..3 used. Content starts at 5.
+        left_offset = 7 if state.bulk_select_mode else 5
+        
         # Calculate dynamic widths based on terminal width
         header_txt = _get_header_for_tab(tab, w)
-        win.addstr(1, 1, header_txt[:w-2], curses.color_pair(5) | curses.A_BOLD)
+        # Ensure header placement is valid
+        if left_offset < w:
+            win.addstr(1, left_offset, header_txt[:w-left_offset], curses.color_pair(5) | curses.A_BOLD)
 
         # Render items with batch optimization
         start_y = 2
@@ -257,12 +264,12 @@ def draw_list(win, state: AppState):
                     checkbox = "[x]" if item.selected else "[ ]"
                     status_style = s_color | (curses.A_REVERSE if is_selected else 0)
                     win.addstr(start_y + i, 1, f" {checkbox} ", status_style)
-                    win.addstr(start_y + i, 7, line[:w-8], row_style)
+                    win.addstr(start_y + i, left_offset, line[:w-left_offset-1], row_style)
                 else:
                     status_char = "*"
                     status_style = s_color | (curses.A_REVERSE if is_selected else 0)
                     win.addstr(start_y + i, 1, f" {status_char} ", status_style)
-                    win.addstr(start_y + i, 5, line[:w-6], row_style)
+                    win.addstr(start_y + i, left_offset, line[:w-left_offset-1], row_style)
         else:
             # Batch rendering for non-container tabs
             for i, item in enumerate(visible_items):
@@ -274,11 +281,15 @@ def draw_list(win, state: AppState):
                 if state.bulk_select_mode:
                     checkbox = "[x]" if item.selected else "[ ]"
                     win.addstr(start_y + i, 1, f" {checkbox} ", row_style)
-                    line = _format_row_for_tab(tab, item, w, is_selected)
-                    win.addstr(start_y + i, 6, line[:w-7].ljust(w-7), row_style)
                 else:
-                    line = _format_row_for_tab(tab, item, w, is_selected)
-                    win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
+                    # For consistency, maybe show a dot or just padding?
+                    # The original code just printed line.
+                    # Let's add a small marker for non-containers too or just spaces
+                    win.addstr(start_y + i, 1, "   ", row_style) # 3 spaces placeholder
+
+                line = _format_row_for_tab(tab, item, w, is_selected)
+                win.addstr(start_y + i, left_offset, line[:w-left_offset-1].ljust(w-left_offset-1), row_style)
+
     except Exception as e:
         pass  # Gracefully handle rendering errors
     
@@ -294,28 +305,28 @@ def _get_header_for_tab(tab: str, term_width: int) -> str:
         w_name = max(15, int(rem_width * 0.35))
         w_image = max(10, rem_width - w_name - 1)
         
-        return (f"  {'PROJECT':<{COL_PROJECT}} {'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} "
+        return (f"{'PROJECT':<{COL_PROJECT}} {'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} "
                 f"{'CPU':<{COL_CPU}} {'MEM':<{COL_MEMORY}} {'IMAGE':<{w_image}}")
     
     elif tab == "images":
         fixed = COL_IMAGE_ID + COL_SIZE + COL_CREATED + 5
         w_tags = max(10, term_width - fixed)
-        return f"  {'SHORT ID':<{COL_IMAGE_ID}} {'SIZE (MB)':<{COL_SIZE}} {'CREATED':<{COL_CREATED}} {'TAGS':<{w_tags}}"
+        return f"{'SHORT ID':<{COL_IMAGE_ID}} {'SIZE (MB)':<{COL_SIZE}} {'CREATED':<{COL_CREATED}} {'TAGS':<{w_tags}}"
     
     elif tab == "volumes":
         rem_w = max(20, term_width - COL_DRIVER - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'MOUNT'}"
+        return f"{'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'MOUNT'}"
     
     elif tab == "networks":
         rem_w = max(20, term_width - COL_DRIVER - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'SUBNET'}"
+        return f"{'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'SUBNET'}"
     
     else:  # compose
         rem_w = max(20, term_width - COL_STATUS - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} {'CONFIG FILES'}"
+        return f"{'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} {'CONFIG FILES'}"
 
 
 def _format_row_for_tab(tab: str, item, term_width: int, is_selected: bool) -> str:
@@ -330,30 +341,30 @@ def _format_row_for_tab(tab: str, item, term_width: int, is_selected: bool) -> s
         name_str = item.name[:w_name-1]
         image_str = item.image[:w_image-1]
         
-        return (f"  {item.project[:COL_PROJECT-1]:<{COL_PROJECT}} {name_str:<{w_name}} "
+        return (f"{item.project[:COL_PROJECT-1]:<{COL_PROJECT}} {name_str:<{w_name}} "
                 f"{item.status[:COL_STATUS-1]:<{COL_STATUS}} {item.cpu_percent:<{COL_CPU}} "
                 f"{item.ram_usage:<{COL_MEMORY}} {image_str:<{w_image}}")
     
     elif tab == "images":
         fixed = COL_IMAGE_ID + COL_SIZE + COL_CREATED + 5
         w_tags = max(10, term_width - fixed)
-        return (f"  {item.short_id:<{COL_IMAGE_ID}} {item.size_mb:<{COL_SIZE}.1f} "
+        return (f"{item.short_id:<{COL_IMAGE_ID}} {item.size_mb:<{COL_SIZE}.1f} "
                 f"{item.created:<{COL_CREATED}} {str(item.tags)[:w_tags]}")
     
     elif tab == "volumes":
         rem_w = max(20, term_width - COL_DRIVER - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.mountpoint}"
+        return f"{item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.mountpoint}"
     
     elif tab == "networks":
         rem_w = max(20, term_width - COL_DRIVER - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.subnet}"
+        return f"{item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.subnet}"
     
     else:  # compose
         rem_w = max(20, term_width - COL_STATUS - 5)
         w_name = max(15, int(rem_w * 0.4))
-        return f"  {item.name[:w_name-1]:<{w_name}} {item.status:<{COL_STATUS}} {item.config_files}"
+        return f"{item.name[:w_name-1]:<{w_name}} {item.status:<{COL_STATUS}} {item.config_files}"
 
 
 def draw_details(win, state: AppState):
@@ -681,7 +692,157 @@ def draw_help_modal(stdscr, cy, cx):
     win.refresh()
     win.getch()
 
-# ... (stats dashboard remains unchanged)
+def draw_progressbar(win, y, x, width, percent, color_pair):
+    """Draw a horizontal progress bar."""
+    if width < 5: return
+    # Clamp percent between 0 and 100 for display
+    disp_percent = max(0.0, min(percent, 100.0))
+    fill_len = int((disp_percent / 100.0) * width)
+    fill_len = max(0, min(fill_len, width))
+    empty_len = width - fill_len
+    
+    try:
+        # Draw filled part
+        bar_char = "█"
+        win.addstr(y, x, bar_char * fill_len, color_pair)
+        # Draw empty part
+        win.addstr(y, x + fill_len, "░" * empty_len, curses.color_pair(1) | curses.A_DIM)
+        # Draw text label centered
+        label = f" {percent:.1f}% "
+        if width > len(label):
+            lbl_x = x + (width - len(label)) // 2
+            # Ensure label doesn't exceed bounds
+            if lbl_x + len(label) < x + width:
+                win.addstr(y, lbl_x, label, curses.A_REVERSE | curses.A_BOLD)
+    except: pass
+
+def draw_stats_dashboard(win, state: AppState):
+    """Draw the statistics dashboard with visual enhancements."""
+    h, w = win.getmaxyx()
+    win.erase()
+    win.box()
+    
+    # Title
+    title = " DOCKER STATISTICS DASHBOARD "
+    win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
+    
+    # Collect statistics
+    collector = StatsCollector()
+    stats = collector.collect_stats(
+        state.containers, 
+        state.images, 
+        state.volumes, 
+        state.networks, 
+        state.composes,
+        state.self_usage
+    )
+    
+    # Layout sections
+    y = 2
+    x = 2
+    col_width = (w - 6) // 2
+    
+    try:
+        # --- LEFT COLUMN ---
+        
+        # 1. Container Overview
+        if y + 12 < h:
+            win.addstr(y, x, "📦 CONTAINERS", curses.A_BOLD | curses.color_pair(5))
+            win.hline(y+1, x, curses.ACS_HLINE, col_width)
+            y += 2
+            
+            c_stats = stats['containers']
+            win.addstr(y, x, f"Total: {c_stats['total']}  (Running: {c_stats['running']}, Stopped: {c_stats['stopped']})")
+            y += 2
+            
+            # CPU Usage Bar
+            win.addstr(y, x, "Avg CPU Usage:")
+            draw_progressbar(win, y+1, x, col_width, c_stats['avg_cpu'], curses.color_pair(6))
+            y += 3
+            
+            # Memory Text
+            win.addstr(y, x, f"Avg Memory: {c_stats['avg_memory']:.1f} MB")
+            y += 2
+            
+            # Status Distribution Chart
+            win.addstr(y, x, "State Distribution:")
+            y += 1
+            status_data = {
+                'Running': c_stats['running'],
+                'Stopped': c_stats['stopped'],
+                'Paused': c_stats['paused']
+            }
+            if any(status_data.values()):
+                chart_lines = ChartRenderer.pie_chart(status_data, width=col_width-2)
+                for line in chart_lines:
+                    if y < h - 1:
+                        win.addstr(y, x, line[:col_width])
+                        y += 1
+            y += 2
+
+        # 2. System Usage (Tockerdui itself)
+        if y + 5 < h:
+            win.addstr(y, x, "💻 APP USAGE", curses.A_BOLD | curses.color_pair(5))
+            win.hline(y+1, x, curses.ACS_HLINE, col_width)
+            y += 2
+            sys_stats = stats['system']
+            win.addstr(y, x, f"CPU: {sys_stats['cpu_percent']:.1f}%  RAM: {sys_stats['memory_mb']:.1f} MB")
+
+        # --- RIGHT COLUMN ---
+        y = 2
+        x = x + col_width + 2
+        
+        # 3. Images
+        if x < w - 2:
+            win.addstr(y, x, "🖼️  IMAGES", curses.A_BOLD | curses.color_pair(5))
+            win.hline(y+1, x, curses.ACS_HLINE, col_width)
+            y += 2
+            
+            i_stats = stats['images']
+            win.addstr(y, x, f"Count: {i_stats['total']}")
+            win.addstr(y, x + 15, f"Size: {i_stats['total_size_gb']:.2f} GB")
+            y += 2
+            
+            # Size Distribution
+            size_data = i_stats['size_distribution']
+            if any(size_data.values()):
+                win.addstr(y, x, "Size Distribution:")
+                y += 1
+                # Draw simple bars manually for better look
+                max_val = max(size_data.values()) if size_data.values() else 1
+                bar_w = max(10, col_width - 20)
+                
+                for label, count in size_data.items():
+                    if y >= h - 2: break
+                    bar_len = int((count / max_val) * bar_w)
+                    bar = "█" * bar_len
+                    win.addstr(y, x, f"{label[:10]:<10} |{bar:<{bar_w}}| {count}")
+                    y += 1
+            y += 2
+
+        # 4. Storage & Network
+        if y + 5 < h and x < w - 2:
+            win.addstr(y, x, "🌐 NETWORK & STORAGE", curses.A_BOLD | curses.color_pair(5))
+            win.hline(y+1, x, curses.ACS_HLINE, col_width)
+            y += 2
+            
+            v_stats = stats['volumes']
+            n_stats = stats['networks']
+            
+            win.addstr(y, x, f"Volumes:  {v_stats['total']}")
+            y += 1
+            win.addstr(y, x, f"Networks: {n_stats['total']}")
+            y += 2
+            
+            if v_stats['drivers']:
+                d_str = ", ".join(list(v_stats['drivers'].keys())[:2])
+                win.addstr(y, x, f"Vol Drivers: {d_str}")
+                y += 1
+
+    except Exception:
+        pass  # Graceful error handling for display issues
+    
+    win.noutrefresh()
 
 def draw_update_modal(stdscr, cy, cx):
     max_h, max_w = stdscr.getmaxyx()

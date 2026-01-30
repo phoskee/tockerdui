@@ -205,32 +205,35 @@ def main(stdscr):
 
                 # Auto-update modal
                 if state.update_available:
+                     should_update = False
                      try:
                          state_mgr.acquire_lock()
-                         try:
-                             draw_update_modal(stdscr, h//2, w//2)
-                             curses.doupdate()
-                             while True:
-                                 k = stdscr.getch()
-                                 k_char = chr(k) if 0 < k < 256 else ""
-                                 if k_char.lower() == 'y' or k in (10, 13):
-                                     stdscr.clear()
-                                     stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
-                                     stdscr.refresh()
-                                     state_mgr.release_lock()
-                                     backend.perform_update()
-                                     return 
-                                 elif k_char.lower() == 'n' or k == 27:
-                                     state_mgr.set_update_available(False)
-                                     stdscr.clear()
-                                     break
-                         finally:
-                             state_mgr.release_lock()
+                         draw_update_modal(stdscr, h//2, w//2)
+                         curses.doupdate()
+                         while True:
+                             k = stdscr.getch()
+                             k_char = chr(k) if 0 < k < 256 else ""
+                             if k_char.lower() == 'y' or k in (10, 13):
+                                 stdscr.clear()
+                                 stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
+                                 stdscr.refresh()
+                                 should_update = True
+                                 break
+                             elif k_char.lower() == 'n' or k == 27:
+                                 state_mgr.set_update_available(False)
+                                 stdscr.clear()
+                                 break
                      except Exception as e:
                          logging.error(f"Update modal error: {e}")
                          state_mgr.set_update_available(False)
+                     finally:
+                         state_mgr.release_lock()
+                     
+                     if should_update:
+                         backend.perform_update()
+                         return
+                     
                      continue
-
                 # Tab switching (1-6 hardcoded for now as standard TUI convention)
                 elif key == ord('1'): state_mgr.set_tab("containers")
                 elif key == ord('2'): state_mgr.set_tab("images")
