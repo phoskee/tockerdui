@@ -338,6 +338,9 @@ class ListWorker(threading.Thread):
         if self.backend.check_for_updates():
             self.state_manager.set_update_available(True)
 
+        # Cache cleanup interval (every 30 seconds = 60 iterations)
+        cleanup_counter = 0
+
         while self.running:
             try:
                 # Force refresh logic
@@ -358,6 +361,14 @@ class ListWorker(threading.Thread):
                     self.state_manager.update_volumes(self.backend.get_volumes())
                     self.state_manager.update_networks(self.backend.get_networks())
                     self.state_manager.update_composes(self.backend.get_composes())
+                
+                # Periodic cache cleanup
+                cleanup_counter += 1
+                if cleanup_counter >= 60:  # Every 30 seconds
+                    from .cache import cache_manager
+                    cache_manager.cleanup_expired()
+                    cleanup_counter = 0
+                    
             except Exception:
                 pass
             

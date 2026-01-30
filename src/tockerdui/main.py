@@ -35,13 +35,15 @@ import os
 import logging
 
 # Setup logging
-logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG, 
+from . import get_log_path
+logging.basicConfig(filename=get_log_path(), level=logging.DEBUG, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
 from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, draw_error_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
+from .cache import cache_manager
 
 def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBackend', 
                  stdscr: 'curses._CursesWindow', state_mgr: 'StateManager', 
@@ -311,8 +313,6 @@ def main(stdscr):
 
                 key = stdscr.getch()
                 if key == curses.ERR: continue
-                
-                force_redraw = True # Input implies we might want immediate feedback or just checking
 
                 if key == ord('q') and not state.is_filtering:
                     logging.info("Quitting")

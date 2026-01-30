@@ -39,6 +39,7 @@ import logging
 import functools
 from typing import List, Tuple, Any, Callable
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
+from .cache import cached, cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class DockerBackend:
             self.client = None
 
     @docker_safe(default_return=[])
+    @cached(key_prefix="containers")
     def get_containers(self) -> List[ContainerInfo]:
         if not self.client: return []
         raw = self.client.containers.list(all=True)
@@ -96,6 +98,7 @@ class DockerBackend:
         return res
 
     @docker_safe(default_return="")
+    @cached(key_prefix="self_usage")
     def get_self_usage(self) -> str:
         pid = os.getpid()
         
@@ -119,6 +122,7 @@ class DockerBackend:
         return f"CPU: {cpu}% MEM: {rss_mb:.1f}MB"
 
     @docker_safe(default_return=("--", "--"))
+    @cached(key_prefix="container_stats")
     def get_container_stats(self, container_id: str) -> Tuple[str, str]:
         if not self.client: return "--", "--"
         c = self.client.containers.get(container_id)
@@ -141,6 +145,7 @@ class DockerBackend:
         return f"{cpu_percent:.1f}%", f"{mem_usage_mb:.1f}MB"
 
     @docker_safe(default_return=[])
+    @cached(key_prefix="images")
     def get_images(self) -> List[ImageInfo]:
         if not self.client: return []
         raw = self.client.images.list()
@@ -159,6 +164,7 @@ class DockerBackend:
         return res
 
     @docker_safe(default_return=[])
+    @cached(key_prefix="volumes")
     def get_volumes(self) -> List[VolumeInfo]:
         if not self.client: return []
         raw = self.client.volumes.list()
@@ -172,6 +178,7 @@ class DockerBackend:
         return res
 
     @docker_safe(default_return=[])
+    @cached(key_prefix="networks")
     def get_networks(self) -> List[NetworkInfo]:
         if not self.client: return []
         raw = self.client.networks.list()
@@ -191,6 +198,7 @@ class DockerBackend:
         return res
 
     @docker_safe(default_return=[])
+    @cached(key_prefix="composes")
     def get_composes(self) -> List[ComposeInfo]:
         if not self.client: return []
         containers = self.client.containers.list(all=True)
@@ -220,6 +228,8 @@ class DockerBackend:
     @docker_safe(default_return=None)
     def start_container(self, container_id: str):
         self.client.containers.get(container_id).start()
+        # Invalidate container cache on action
+        cache_manager.invalidate("containers")
 
     @docker_safe(default_return=None)
     def stop_container(self, container_id: str):
@@ -254,6 +264,30 @@ class DockerBackend:
     @docker_safe(default_return=None)
     def copy_to_container(self, container_id: str, src_path: str, dest_path: str):
         if not self.client or not src_path or not dest_path: return
+        
+        # Validate source path (prevent path traversal attacks)
+        if src_path.startswith('/') or src_path.startswith('~'):
+            logging.warning(f"Rejected copy attempt with absolute/home path: {src_path}")
+            return
+        
+        if '../' in src_path or src_path.startswith('..'):
+            logging.warning(f"Rejected copy attempt with path traversal: {src_path}")
+            return
+        
+        # Validate that source file exists
+        if not os.path.exists(src_path):
+            logging.warning(f"Source path does not exist: {src_path}")
+            return
+        
+        # Validate destination path (prevent path traversal in container)
+        if dest_path.startswith('~'):
+            logging.warning(f"Rejected copy destination with home path: {dest_path}")
+            return
+        
+        if '../' in dest_path or dest_path.startswith('..'):
+            logging.warning(f"Rejected copy destination with path traversal: {dest_path}")
+            return
+        
         c = self.client.containers.get(container_id)
         
         # Create a tar archive of the source
@@ -359,58 +393,42 @@ class DockerBackend:
     @docker_safe(default_return=None)
     def compose_up(self, project_name: str) -> None:
         """Start services for a Docker Compose project."""
-        try:
-            subprocess.run(
-                ["docker", "compose", "-p", project_name, "up", "-d"],
-                check=True,
-                capture_output=True
-            )
-            logging.info(f"Compose project '{project_name}' started successfully")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to start compose project '{project_name}': {e.stderr.decode()}")
-            raise
+        subprocess.run(
+            ["docker", "compose", "-p", project_name, "up", "-d"],
+            check=True,
+            capture_output=True
+        )
+        logging.info(f"Compose project '{project_name}' started successfully")
     
     @docker_safe(default_return=None)
     def compose_down(self, project_name: str) -> None:
         """Stop and remove services for a Docker Compose project."""
-        try:
-            subprocess.run(
-                ["docker", "compose", "-p", project_name, "down"],
-                check=True,
-                capture_output=True
-            )
-            logging.info(f"Compose project '{project_name}' stopped successfully")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to stop compose project '{project_name}': {e.stderr.decode()}")
-            raise
+        subprocess.run(
+            ["docker", "compose", "-p", project_name, "down"],
+            check=True,
+            capture_output=True
+        )
+        logging.info(f"Compose project '{project_name}' stopped successfully")
     
     @docker_safe(default_return=None)
     def compose_remove(self, project_name: str) -> None:
         """Remove services, volumes, and networks for a Docker Compose project."""
-        try:
-            subprocess.run(
-                ["docker", "compose", "-p", project_name, "down", "-v"],
-                check=True,
-                capture_output=True
-            )
-            logging.info(f"Compose project '{project_name}' removed successfully")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to remove compose project '{project_name}': {e.stderr.decode()}")
-            raise
+        subprocess.run(
+            ["docker", "compose", "-p", project_name, "down", "-v"],
+            check=True,
+            capture_output=True
+        )
+        logging.info(f"Compose project '{project_name}' removed successfully")
     
     @docker_safe(default_return=None)
     def compose_pause(self, project_name: str) -> None:
         """Pause services for a Docker Compose project."""
-        try:
-            subprocess.run(
-                ["docker", "compose", "-p", project_name, "pause"],
-                check=True,
-                capture_output=True
-            )
-            logging.info(f"Compose project '{project_name}' paused successfully")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to pause compose project '{project_name}': {e.stderr.decode()}")
-            raise
+        subprocess.run(
+            ["docker", "compose", "-p", project_name, "pause"],
+            check=True,
+            capture_output=True
+        )
+        logging.info(f"Compose project '{project_name}' paused successfully")
 
     def perform_update(self):
         try:

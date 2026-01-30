@@ -29,5 +29,36 @@ Dependencies:
   - curses (built-in, not available on Windows natively)
 """
 
+import os
+from pathlib import Path
+
 __version__ = "0.1.0"
 
+
+def get_log_path() -> str:
+    """
+    Get the log file path following XDG Base Directory spec.
+    
+    Returns XDG_DATA_HOME/tockerdui/logs/tockerdui.log with fallback to /tmp.
+    Creates directory if it doesn't exist.
+    
+    Returns:
+        str: Absolute path to log file (/tmp/tockerdui.log as fallback)
+    """
+    # Try XDG_DATA_HOME first (Linux/macOS)
+    xdg_data_home = os.environ.get('XDG_DATA_HOME')
+    if not xdg_data_home:
+        # Default fallback: ~/.local/share
+        home = Path.home()
+        xdg_data_home = home / '.local' / 'share'
+    else:
+        xdg_data_home = Path(xdg_data_home)
+    
+    log_dir = xdg_data_home / 'tockerdui' / 'logs'
+    
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return str(log_dir / 'tockerdui.log')
+    except (PermissionError, OSError):
+        # Fallback to /tmp if permission denied
+        return '/tmp/tockerdui.log'

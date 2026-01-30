@@ -43,7 +43,58 @@ Limitations:
 """
 
 import curses
+from dataclasses import dataclass
+from typing import List, Callable
 from .model import AppState
+
+# --- COLUMN LAYOUT CONSTANTS ---
+
+@dataclass
+class ColumnLayout:
+    """Defines column layout for a tab view."""
+    columns: List[dict]  # List of {name, width, formatter}
+    min_width: int = 40  # Minimum terminal width for this layout
+    
+    def render_header(self, term_width: int) -> str:
+        """Render header row with column names."""
+        header_parts = []
+        for col in self.columns:
+            if col.get('is_dynamic'):
+                width = col['width']
+            else:
+                width = col['width']
+            header_parts.append(f"{col['name']:<{width}}")
+        return "  " + " ".join(header_parts)
+    
+    def render_row(self, item, tab: str) -> str:
+        """Render a data row using formatters."""
+        row_parts = []
+        for col in self.columns:
+            formatter = col.get('formatter')
+            if formatter:
+                value = formatter(item, tab)
+            else:
+                value = str(getattr(item, col['field'], ''))
+            width = col['width']
+            row_parts.append(f"{str(value):<{width}}")
+        return "  " + " ".join(row_parts)
+
+# Column width constants
+COL_PROJECT = 12
+COL_NAME_CONTAINER = 20
+COL_STATUS = 10
+COL_CPU = 7
+COL_MEMORY = 10
+COL_IMAGE = 20
+
+COL_IMAGE_ID = 15
+COL_SIZE = 10
+COL_CREATED = 15
+
+COL_DRIVER = 10
+COL_NAME_RESOURCE = 20
+
+COL_CONFIG_FILES = 25
 
 def init_colors():
     curses.start_color()
@@ -137,111 +188,149 @@ def draw_footer(stdscr, width, height, state: AppState):
     stdscr.noutrefresh()
 
 def draw_list(win, state: AppState):
+    """Render the resource list with dynamic column layout."""
     h, w = win.getmaxyx()
     win.erase()
     win.box()
     
-    # Selection of items and headers
     tab = state.selected_tab
     
-    # Dynamic Column Widths
-    # Base padding: 2 (start) + 1 (gap) * N = ~6 chars reserved for structure
-    # Define widths map: {tab: (header_str, item_formatter_func)}
-    
     try:
+        # Get items and title based on tab
         if tab == "containers":
             title, items = " Containers ", state.containers
-            # Fixed cols: 
-            # Project: 12, Status: 10, CPU: 7, Mem: 10 => Total Fixed ~40
-            # Dynamic: Name, Image
-            
-            fixed_width = 12 + 10 + 7 + 10 + 6 # +6 for spaces/bullet
-            rem_width = max(10, w - fixed_width)
-            
-            # Allocate 35% to Name, remainder to Image, but keep min 20 for name
-            w_name = max(20, int(rem_width * 0.35))
-            w_image = max(10, rem_width - w_name - 1)
-            
-            header = f"  {'PROJECT':<12} {'NAME':<{w_name}} {'STATUS':<10} {'CPU':<7} {'MEM':<10} {'IMAGE'}"
-            
         elif tab == "images":
             title, items = " Images ", state.images
-            w_id = 15
-            w_size = 10
-            w_created = 15
-            fixed = w_id + w_size + w_created + 5
-            w_tags = max(10, w - fixed)
-            header = f"  {'SHORT ID':<{w_id}} {'SIZE (MB)':<{w_size}} {'CREATED':<{w_created}} {'TAGS'}"
-            
         elif tab == "volumes":
             title, items = " Volumes ", state.volumes
-            w_driver = 10
-            rem_w = max(20, w - w_driver - 5)
-            w_name = max(20, int(rem_w * 0.4))
-            # w_mount = rem_w - w_name
-            header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'MOUNT'}"
-            
         elif tab == "networks":
             title, items = " Networks ", state.networks
-            w_driver = 10
-            rem_w = max(20, w - w_driver - 5)
-            w_name = max(20, int(rem_w * 0.4))
-            header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'SUBNET'}"
-            
-        else: # compose
+        else:  # compose
             title, items = " Compose Projects ", state.composes
-            w_status = 15
-            rem_w = max(20, w - w_status - 5)
-            w_name = max(20, int(rem_w * 0.4))
-            header = f"  {'NAME':<{w_name}} {'STATUS':<{w_status}} {'CONFIG FILES'}"
 
-        # Filtered title
+        # Add filter indicator to title
         if state.filter_text:
             title += f" (Matches: '{state.filter_text}') "
 
+        # Render header
         win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
-        win.addstr(1, 1, header[:w-2], curses.color_pair(5) | curses.A_BOLD)
+        
+        # Calculate dynamic widths based on terminal width
+        header_txt = _get_header_for_tab(tab, w)
+        win.addstr(1, 1, header_txt[:w-2], curses.color_pair(5) | curses.A_BOLD)
 
+        # Render items with batch optimization
         start_y = 2
         max_items = h - 3
         offset = state.scroll_offset
         visible_items = items[offset : offset + max_items]
         
-        for i, item in enumerate(visible_items):
-            actual_index = offset + i
-            is_selected = (actual_index == state.selected_index)
-            
-            row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
-            
-            if tab == "containers":
-                # Simple bullet
-                status_char = "*" 
-                if item.status == "running": s_color = curses.color_pair(2)
-                elif item.status == "paused": s_color = curses.color_pair(6)
-                else: s_color = curses.color_pair(3)
+        # Pre-calculate styles to avoid repeated attribute access
+        if tab == "containers":
+            for i, item in enumerate(visible_items):
+                actual_index = offset + i
+                is_selected = (actual_index == state.selected_index)
+                row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
                 
-                win.addstr(start_y + i, 1, f" {status_char} ", s_color | (curses.A_REVERSE if is_selected else 0))
+                line = _format_row_for_tab(tab, item, w, is_selected)
                 
-                # Use dynamic widths calculated above
-                name_str = item.name[:w_name-1]
-                img_str = item.image[:w_image-1] if 'w_image' in locals() else item.image
+                # Optimized status handling
+                if item.status == "running": 
+                    s_color = curses.color_pair(2)
+                elif item.status == "paused": 
+                    s_color = curses.color_pair(6)
+                else: 
+                    s_color = curses.color_pair(3)
                 
-                row_txt = f"{item.project[:11]:<12} {name_str:<{w_name}} {item.status[:9]:<10} {item.cpu_percent:<7} {item.ram_usage:<10} {img_str}"
-                win.addstr(start_y + i, 5, row_txt[:w-6], row_style)
-            else:
-                if tab == "images":
-                    line = f"  {item.short_id:<15} {item.size_mb:<10.1f} {item.created:<15} {str(item.tags)[:w_tags]}"
-                elif tab == "volumes":
-                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.mountpoint}"
-                elif tab == "networks":
-                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.subnet}"
-                else: # compose
-                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.status:<15} {item.config_files}"
+                status_char = "*"
+                status_style = s_color | (curses.A_REVERSE if is_selected else 0)
                 
+                win.addstr(start_y + i, 1, f" {status_char} ", status_style)
+                win.addstr(start_y + i, 5, line[:w-6], row_style)
+        else:
+            # Batch rendering for non-container tabs
+            for i, item in enumerate(visible_items):
+                actual_index = offset + i
+                is_selected = (actual_index == state.selected_index)
+                row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
+                
+                line = _format_row_for_tab(tab, item, w, is_selected)
                 win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
-    except: pass
+    except Exception as e:
+        pass  # Gracefully handle rendering errors
     
     win.noutrefresh()
+
+
+def _get_header_for_tab(tab: str, term_width: int) -> str:
+    """Generate header string for the given tab."""
+    if tab == "containers":
+        # Dynamic widths for containers
+        fixed_width = COL_PROJECT + COL_STATUS + COL_CPU + COL_MEMORY + 6
+        rem_width = max(10, term_width - fixed_width - 10)
+        w_name = max(15, int(rem_width * 0.35))
+        w_image = max(10, rem_width - w_name - 1)
+        
+        return (f"  {'PROJECT':<{COL_PROJECT}} {'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} "
+                f"{'CPU':<{COL_CPU}} {'MEM':<{COL_MEMORY}} {'IMAGE':<{w_image}}")
+    
+    elif tab == "images":
+        fixed = COL_IMAGE_ID + COL_SIZE + COL_CREATED + 5
+        w_tags = max(10, term_width - fixed)
+        return f"  {'SHORT ID':<{COL_IMAGE_ID}} {'SIZE (MB)':<{COL_SIZE}} {'CREATED':<{COL_CREATED}} {'TAGS':<{w_tags}}"
+    
+    elif tab == "volumes":
+        rem_w = max(20, term_width - COL_DRIVER - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'MOUNT'}"
+    
+    elif tab == "networks":
+        rem_w = max(20, term_width - COL_DRIVER - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {'NAME':<{w_name}} {'DRIVER':<{COL_DRIVER}} {'SUBNET'}"
+    
+    else:  # compose
+        rem_w = max(20, term_width - COL_STATUS - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {'NAME':<{w_name}} {'STATUS':<{COL_STATUS}} {'CONFIG FILES'}"
+
+
+def _format_row_for_tab(tab: str, item, term_width: int, is_selected: bool) -> str:
+    """Format a single row for the given tab."""
+    if tab == "containers":
+        # Dynamic widths (must match header)
+        fixed_width = COL_PROJECT + COL_STATUS + COL_CPU + COL_MEMORY + 6
+        rem_width = max(10, term_width - fixed_width - 10)
+        w_name = max(15, int(rem_width * 0.35))
+        w_image = max(10, rem_width - w_name - 1)
+        
+        name_str = item.name[:w_name-1]
+        image_str = item.image[:w_image-1]
+        
+        return (f"  {item.project[:COL_PROJECT-1]:<{COL_PROJECT}} {name_str:<{w_name}} "
+                f"{item.status[:COL_STATUS-1]:<{COL_STATUS}} {item.cpu_percent:<{COL_CPU}} "
+                f"{item.ram_usage:<{COL_MEMORY}} {image_str:<{w_image}}")
+    
+    elif tab == "images":
+        fixed = COL_IMAGE_ID + COL_SIZE + COL_CREATED + 5
+        w_tags = max(10, term_width - fixed)
+        return (f"  {item.short_id:<{COL_IMAGE_ID}} {item.size_mb:<{COL_SIZE}.1f} "
+                f"{item.created:<{COL_CREATED}} {str(item.tags)[:w_tags]}")
+    
+    elif tab == "volumes":
+        rem_w = max(20, term_width - COL_DRIVER - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.mountpoint}"
+    
+    elif tab == "networks":
+        rem_w = max(20, term_width - COL_DRIVER - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<{COL_DRIVER}} {item.subnet}"
+    
+    else:  # compose
+        rem_w = max(20, term_width - COL_STATUS - 5)
+        w_name = max(15, int(rem_w * 0.4))
+        return f"  {item.name[:w_name-1]:<{w_name}} {item.status:<{COL_STATUS}} {item.config_files}"
 
 
 def draw_details(win, state: AppState):
