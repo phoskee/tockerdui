@@ -343,8 +343,6 @@ def ask_confirmation(stdscr, cy, cx, question: str) -> bool:
         elif key == ord('q'): return False
 
 def action_menu(stdscr, cy, cx, tab, item_id):
-
-def action_menu(stdscr, cy, cx, tab, item_id):
     actions = []
     if tab == "containers":
         actions = [("Start", "s"), ("Stop", "t"), ("Restart", "r"), ("Pause/Unpause", "z"), ("Rename", "n"), ("Commit", "k"), ("Copy To", "cp"), ("Exec Shell", "x"), ("Logs", "l"), ("Inspect", "i"), ("Delete", "d")]
