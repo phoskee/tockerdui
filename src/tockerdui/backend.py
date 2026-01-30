@@ -39,7 +39,7 @@ import logging
 import functools
 from typing import List, Tuple, Any, Callable
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
-from .cache import cached, cache_manager
+from .cache import cached, cache_manager, cache_with_ttl
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ class DockerBackend:
         return f"{cpu_percent:.1f}%", f"{mem_usage_mb:.1f}MB"
 
     @docker_safe(default_return=[])
-    @cached(key_prefix="images")
+    @cache_with_ttl(seconds=300, key_prefix="images")
     def get_images(self) -> List[ImageInfo]:
         if not self.client: return []
         raw = self.client.images.list()
@@ -223,6 +223,19 @@ class DockerBackend:
         container = self.client.containers.get(container_id)
         logs_bytes = container.logs(tail=tail)
         return logs_bytes.decode('utf-8', errors='replace').splitlines()
+
+    def get_log_stream_process(self, container_id: str, tail: int = 50) -> subprocess.Popen:
+        """Returns a subprocess for streaming logs."""
+        cmd = ["docker", "logs", "-f", "--tail", str(tail), container_id]
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,  # Line buffered
+            encoding='utf-8',
+            errors='replace'
+        )
 
     # Actions
     @docker_safe(default_return=None)
@@ -302,6 +315,7 @@ class DockerBackend:
         if not self.client: return
         try:
             self.client.images.get(image_id).remove(force=True)
+            cache_manager.invalidate("images")
         except: pass
 
     def save_image(self, image_id: str, file_path: str):
@@ -315,10 +329,12 @@ class DockerBackend:
         if not self.client or not file_path: return
         with open(file_path, 'rb') as f:
             self.client.images.load(f)
+        cache_manager.invalidate("images")
         
     def build_image(self, path: str, tag: str):
         if not self.client or not path: return
         self.client.images.build(path=path, tag=tag)
+        cache_manager.invalidate("images")
 
     def remove_volume(self, volume_name: str):
         v = self.client.volumes.get(volume_name)

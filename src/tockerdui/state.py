@@ -36,6 +36,7 @@ Optimization:
 
 import threading
 import time
+import select
 from typing import List, Optional
 from .model import AppState, ContainerInfo
 from .backend import DockerBackend
@@ -456,41 +457,84 @@ class LogsWorker(threading.Thread):
         self.state_manager = state_manager
         self.backend = backend
         self.running = True
-        self.last_container_id = None
-        self.follow_mode = False
+        self.current_container_id = None
+        self.process = None
         self.log_buffer = []
         self.max_buffer_size = 1000
 
     def run(self) -> None:
         while self.running:
             try:
+                # 1. Determine target container
                 snapshot = self.state_manager.get_snapshot()
-                if snapshot.selected_tab == "containers":
-                    cid = self.state_manager.get_selected_item_id()
-                    
-                    # Check if container changed
-                    if cid != self.last_container_id:
-                        self.last_container_id = cid
-                        self.log_buffer.clear()
-                        self.follow_mode = True
-                    
-                    if cid:
-                        # Get recent logs and update buffer
-                        new_logs = self.backend.get_logs(cid, tail=50)
-                        
-                        # Only update if we have new content (simplified check)
-                        if new_logs and (not self.log_buffer or new_logs[-1] != self.log_buffer[-1]):
-                            self.log_buffer.extend(new_logs)
-                            
-                            # Maintain buffer size
-                            if len(self.log_buffer) > self.max_buffer_size:
-                                self.log_buffer = self.log_buffer[-self.max_buffer_size:]
-                            
-                            self.state_manager.set_logs(list(self.log_buffer))
+                target_id = None
                 
-                time.sleep(0.5) # Smooth polling interval
-            except Exception:
+                if snapshot.selected_tab == "containers":
+                    target_id = self.state_manager.get_selected_item_id()
+                
+                # 2. Handle container switch
+                if target_id != self.current_container_id:
+                    # Kill old process
+                    if self.process:
+                        self.process.terminate()
+                        try:
+                            self.process.wait(timeout=0.2)
+                        except:
+                            self.process.kill()
+                        self.process = None
+                    
+                    self.current_container_id = target_id
+                    self.log_buffer = []
+                    self.state_manager.set_logs(["Loading logs..."])
+                    
+                    if target_id:
+                        try:
+                            self.process = self.backend.get_log_stream_process(target_id, tail=50)
+                        except Exception as e:
+                            self.state_manager.set_logs([f"Error starting logs: {e}"])
+                
+                # 3. Read stream if process active
+                if self.process:
+                    # Check if process is still alive
+                    if self.process.poll() is not None:
+                        # Process died
+                        self.process = None
+                        continue
+                        
+                    # Non-blocking read using select
+                    # Wait up to 0.1s for data
+                    try:
+                        reads = [self.process.stdout.fileno()]
+                        ret = select.select(reads, [], [], 0.1)
+                        
+                        if ret[0]:
+                            # Data available
+                            line = self.process.stdout.readline()
+                            if line:
+                                self.log_buffer.append(line.rstrip())
+                                if len(self.log_buffer) > self.max_buffer_size:
+                                    self.log_buffer = self.log_buffer[-self.max_buffer_size:]
+                                
+                                # Update state
+                                self.state_manager.set_logs(list(self.log_buffer))
+                                
+                                # Auto scroll if near bottom (simplified: always nudge if follow mode implied)
+                                self.state_manager.scroll_logs(1, 1000)
+                    except ValueError:
+                        # File descriptor closed
+                        self.process = None
+                else:
+                    time.sleep(0.2)
+                    
+            except Exception as e:
                 time.sleep(1.0)
+        
+        # Cleanup on exit
+        if self.process:
+            try:
+                self.process.terminate()
+            except:
+                pass
 
 class StatsWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):

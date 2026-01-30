@@ -59,7 +59,7 @@ class CacheManager:
         # TTL configuration (seconds) per resource type
         self.ttl_config = {
             'containers': 1.0,      # Fast changing, update every second
-            'images': 5.0,          # Slower changing
+            'images': 300.0,        # Cache images for 5 minutes (Task 4.2)
             'volumes': 10.0,        # Rarely change
             'networks': 10.0,        # Rarely change
             'composes': 2.0,        # Medium frequency
@@ -196,3 +196,7 @@ def cached(ttl_override: Optional[float] = None, key_prefix: Optional[str] = Non
         
         return wrapper
     return decorator
+
+def cache_with_ttl(seconds: float = 300, key_prefix: Optional[str] = None):
+    """Alias for cached decorator with explicit seconds parameter."""
+    return cached(ttl_override=seconds, key_prefix=key_prefix)
