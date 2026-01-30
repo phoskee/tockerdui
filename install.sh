@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Dockterm V2 Installer - Enhanced
+# tockerdui   Installer - Enhanced
 set -e
 
-INSTALL_DIR="$HOME/.local/share/dockterm"
+INSTALL_DIR="$HOME/.local/share/tockerdui"
 BIN_DIR="$HOME/.local/bin"
 
-echo "🐳 Preparing to install Dockterm V2..."
+echo "🐳 Preparing to install tockerdui  ..."
 
 # Check for python3
 if ! command -v python3 &> /dev/null;
@@ -28,28 +28,32 @@ mkdir -p "$INSTALL_DIR"
 mkdir -p "$BIN_DIR"
 
 echo "📂 Copying source files..."
-cp -r . "$INSTALL_DIR/"
+mkdir -p "$INSTALL_DIR/tockerdui"
+cp -r src/tockerdui/. "$INSTALL_DIR/tockerdui/"
+cp requirements.txt "$INSTALL_DIR/tockerdui/"
+# Remove nested .git or build artifacts from install dir if any
+rm -rf "$INSTALL_DIR/tockerdui/.git" "$INSTALL_DIR/tockerdui/venv"
 
 echo "🔧 Creating isolated virtual environment..."
 python3 -m venv "$INSTALL_DIR/venv"
 
 echo "📥 Installing dependencies (this may take a minute)...
 "$INSTALL_DIR"/venv/bin/pip" install --upgrade pip --quiet
-"$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" --quiet
+"$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/tockerdui/requirements.txt" --quiet
 
 echo "🚀 Creating global launcher..."
-cat <<EOF > "$BIN_DIR/dockterm"
+cat <<EOF > "$BIN_DIR/tockerdui"
 #!/bin/bash
 export PYTHONPATH="$INSTALL_DIR"
-"$INSTALL_DIR/venv/bin/python3" -m dockterm_raw_v2 "\$@"
+"$INSTALL_DIR/venv/bin/python3" -m tockerdui.main "\$@"
 EOF
 
-chmod +x "$BIN_DIR/dockterm"
+chmod +x "$BIN_DIR/tockerdui"
 
 echo ""
 echo "✨ ✅ Installation Successful! ✨"
 echo "------------------------------------------------"
-echo "You can now launch the app from anywhere with: dockterm"
+echo "You can now launch the app from anywhere with: tockerdui"
 
 
 if [[ ":$PATH:" != ":$BIN_DIR:" ]]

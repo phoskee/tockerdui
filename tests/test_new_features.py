@@ -1,12 +1,27 @@
 import pytest
-from dockterm_raw_v2.state import StateManager
-from dockterm_raw_v2.model import NetworkInfo
+from tockerdui.state import StateManager
+from tockerdui.model import NetworkInfo
+class MockContainer:
+    def __init__(self, id, name):
+        self.id = id
+        self.short_id = id[:12] if len(id) > 12 else id
+        self.name = name
+        self.status = "running"
+        self.image = "nginx:latest"
+        self.project = ""
+        self.cpu_percent = 0
+        self.ram_usage = "0MB"
+    def __lt__(self, other):
+        return self.name < other.name
 
 def test_scrolling_logic():
     sm = StateManager()
     
     # Simulate 20 items
-    items = [i for i in range(20)]
+    items = []
+    for i in range(20):
+        m = MockContainer(id=str(i), name=f"container_{i}")
+        items.append(m)
     sm.update_containers(items)
     
     # Page height 5
@@ -72,7 +87,7 @@ def test_filtering_logic():
     
     # Mock containers
     # We need a class that has .name and .image (or .short_id/.tags)
-    from dockterm_raw_v2.model import ContainerInfo
+    from tockerdui.model import ContainerInfo
     
     c1 = ContainerInfo(id="1", short_id="1", name="web-app", status="running", image="nginx:latest")
     c2 = ContainerInfo(id="2", short_id="2", name="db-mongo", status="running", image="mongo:4")

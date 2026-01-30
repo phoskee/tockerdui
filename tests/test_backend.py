@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from dockterm_raw_v2.backend import DockerBackend
-from dockterm_raw_v2.model import ContainerInfo
+from tockerdui.backend import DockerBackend
+from tockerdui.model import ContainerInfo
 
 @pytest.fixture
 def mock_docker(mocker):

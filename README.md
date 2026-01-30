@@ -1,8 +1,8 @@
-# 🐳 DOCKTERM V2
+# 🐳 tockerdui
 
-**Dockterm** è un'alternativa leggera, veloce e interamente basata su terminale a Docker Desktop. Gestisci i tuoi container, immagini, volumi e reti con la velocità della tastiera.
+**tockerdui** è un'alternativa leggera, veloce e interamente basata su terminale a Docker Desktop. Gestisci i tuoi container, immagini, volumi e reti con la velocità della tastiera.
 
-![Dockterm UI](https://via.placeholder.com/800x400?text=Dockterm+V2+TUI) <!-- Se carichi uno screenshot, metti il link qui -->
+<!-- ![tockerdui UI](https://via.placeholder.com/800x400?text=tockerdui+ +TUI) -->
 
 ## ✨ Caratteristiche Principali
 
@@ -18,12 +18,23 @@
 
 ## 🚀 Installazione Rapida
 
-Per installare Dockterm e averlo disponibile come comando globale:
+Per installare tockerdui e averlo disponibile come comando globale:
 
 ```bash
-git clone https://github.com/TUO_USERNAME/dockterm_v2.git
-cd dockterm_v2
+git clone https://github.com/phoskee/tockerdui.git
+cd tockerdui
 ./install.sh
+```
+
+Questo installerà l'applicazione in `~/.local/share/tockerdui` e creerà un link simbolico in `~/.local/bin`. Assicurati che `~/.local/bin` sia nel tuo PATH.
+
+## 🔄 Aggiornamento
+
+Per aggiornare l'applicazione all'ultima versione:
+
+```bash
+cd tockerdui
+./update.sh
 ```
 
 Dopo l'installazione, riavvia il terminale o scrivi `source ~/.bashrc` (o `~/.zshrc`).
@@ -32,7 +43,7 @@ Dopo l'installazione, riavvia il terminale o scrivi `source ~/.bashrc` (o `~/.zs
 
 ## 🗑️ Disinstallazione
 
-Se desideri rimuovere Dockterm dal tuo sistema:
+Se desideri rimuovere tockerdui dal tuo sistema:
 
 ```bash
 ./uninstall.sh
@@ -43,43 +54,48 @@ Se desideri rimuovere Dockterm dal tuo sistema:
 ## ⌨️ Come Usarlo (Keybindings)
 
 ### Navigazione Generale
-| Tasto | Azione |
-|-------|--------|
+
+| Tasto       | Azione                                             |
+| ----------- | -------------------------------------------------- |
 | `F1` - `F5` | Cambia Tab (Containers, Images, Vol, Net, Compose) |
-| `↑` / `↓` | Naviga nella lista |
-| `Invio` | **Apri Menu Azioni** (Consigliato) |
-| `/` | Attiva Filtro / Ricerca |
-| `Esc` | Pulisce filtro o chiude menu |
-| `h` o `?` | Mostra aiuto rapido |
-| `q` | Esci da Dockterm |
+| `↑` / `↓`   | Naviga nella lista                                 |
+| `Invio`     | **Apri Menu Azioni** (Consigliato)                 |
+| `/`         | Attiva Filtro / Ricerca                            |
+| `Esc`       | Pulisce filtro o chiude menu                       |
+| `h` o `?`   | Mostra aiuto rapido                                |
+| `q`         | Esci da tockerdui                                  |
 
 ### Scorciatoie Container
-| Tasto | Azione |
-|-------|--------|
-| `s` | Avvia (Start) |
-| `t` | Ferma (Stop) |
-| `r` | Riavvia (Restart) |
-| `z` | Pausa / Riprendi |
-| `l` | Visualizza Log (Interattivo) |
-| `x` | Apri Shell (`exec /bin/bash`) |
-| `n` | Rinomina Container |
-| `k` | Commit (Crea immagine da container) |
-| `cp` | Copia file nel container |
+
+| Tasto | Azione                              |
+| ----- | ----------------------------------- |
+| `s`   | Avvia (Start)                       |
+| `t`   | Ferma (Stop)                        |
+| `r`   | Riavvia (Restart)                   |
+| `z`   | Pausa / Riprendi                    |
+| `l`   | Visualizza Log (Interattivo)        |
+| `x`   | Apri Shell (`exec /bin/bash`)       |
+| `n`   | Rinomina Container                  |
+| `k`   | Commit (Crea immagine da container) |
+| `cp`  | Copia file nel container            |
 
 ### Scorciatoie Immagini
-| Tasto | Azione |
-|-------|--------|
-| `R` | Esegui (Run) come nuovo container |
-| `p` | Pull / Aggiorna immagine |
-| `H` | Visualizza Storia (History) |
-| `B` | Build da Dockerfile |
-| `S` / `L` | Salva / Carica immagine (.tar) |
+
+| Tasto     | Azione                            |
+| --------- | --------------------------------- |
+| `R`       | Esegui (Run) come nuovo container |
+| `p`       | Pull / Aggiorna immagine          |
+| `H`       | Visualizza Storia (History)       |
+| `B`       | Build da Dockerfile               |
+| `S` / `L` | Salva / Carica immagine (.tar)    |
 
 ---
 
 ## 🛠 Azioni Globali
+
 - **Pruning**: Premi `Shift + P` per pulire tutte le risorse Docker inutilizzate (container fermi, immagini orfane, ecc.).
 - **Inspect**: Premi `i` su qualsiasi risorsa per vedere la sua configurazione JSON completa.
 
 ## 📄 Licenza
+
 Distribuito sotto licenza **MIT**. Vedi il file `LICENSE` per dettagli.
