@@ -43,7 +43,9 @@ logging.basicConfig(filename=get_log_path(), level=logging.DEBUG,
 from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
 from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, draw_error_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
+from .main_bulk import handle_bulk_action
 from .cache import cache_manager
+from .config import config_manager
 
 def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBackend', 
                  stdscr: 'curses._CursesWindow', state_mgr: 'StateManager', 
@@ -53,56 +55,133 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
         logging.debug(f"Handling action {key} for tab {tab}")
         action_taken = False
         
-        # --- CONTAINER ACTIONS ---
-        if key == 's' and tab == "containers":
-            backend.start_container(item_id)
-            action_taken = True
-        elif key == 't' and tab == "containers":
-            if ask_confirmation(stdscr, h//2, w//2, "Stop container?"):
-                 backend.stop_container(item_id)
-                 action_taken = True
-        elif key == 'r' and tab == "containers":
-            backend.restart_container(item_id)
-            action_taken = True
-        elif key == 'z' and tab == "containers":
-            c_info = next((c for c in state.containers if c.id == item_id), None)
-            if c_info:
-                if c_info.status == "paused": backend.unpause_container(item_id)
-                elif c_info.status == "running": backend.pause_container(item_id)
-        elif key == 'n' and tab == "containers":
-            new_name = prompt_input(stdscr, h//2, w//2, "New Name: ")
-            if new_name: backend.rename_container(item_id, new_name)
-        elif key == 'k' and tab == "containers":
-            repo = prompt_input(stdscr, h//2, w//2, "Repository: ")
-            tag = prompt_input(stdscr, h//2, w//2, "Tag (optional): ")
-            if repo: backend.commit_container(item_id, repo, tag if tag else None)
-        elif key == 'cp' and tab == "containers":
-            src = prompt_input(stdscr, h//2, w//2, "Source Path: ")
-            dest = prompt_input(stdscr, h//2, w//2, "Dest Path (in container): ")
-            if src and dest: backend.copy_to_container(item_id, src, dest)
-        elif key == 'x' and tab == "containers":
-            curses.def_prog_mode()
-            curses.endwin()
-            try:
-                subprocess.call(["docker", "exec", "-it", item_id, "/bin/bash"])
-            except Exception:
-                try: subprocess.call(["docker", "exec", "-it", item_id, "sh"])
-                except: pass
-            curses.reset_prog_mode()
-            curses.curs_set(0)
-            stdscr.nodelay(True)
-            stdscr.clearok(True)
-            stdscr.refresh()
-        elif key == 'l' and tab == "containers":
-            curses.def_prog_mode()
-            curses.endwin()
-            try: subprocess.call(f"docker logs {item_id} 2>&1 | less -R", shell=True)
-            except Exception: pass
-            curses.reset_prog_mode()
-            curses.curs_set(0)
-            stdscr.nodelay(True)
-            stdscr.clearok(True)
-            stdscr.refresh()
+        # --- BULK ACTIONS ---
+        if state.bulk_select_mode:
+            selected_ids = state_mgr.get_selected_items()
+            if not selected_ids:
+                state_mgr.set_message("No items selected")
+                return
+                
+            if key == 's' and tab == "containers":
+                for container_id in selected_ids:
+                    backend.start_container(container_id)
+                state_mgr.set_message(f"Started {len(selected_ids)} containers")
+                action_taken = True
+            elif key == 't' and tab == "containers":
+                if ask_confirmation(stdscr, h//2, w//2, f"Stop {len(selected_ids)} containers?"):
+                    for container_id in selected_ids:
+                        backend.stop_container(container_id)
+                    state_mgr.set_message(f"Stopped {len(selected_ids)} containers")
+                    action_taken = True
+            elif key == 'r' and tab == "containers":
+                for container_id in selected_ids:
+                    backend.restart_container(container_id)
+                state_mgr.set_message(f"Restarted {len(selected_ids)} containers")
+                action_taken = True
+            elif key == 'd' and tab == "containers":
+                if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} containers?"):
+                    for container_id in selected_ids:
+                        backend.remove_container(container_id)
+                    state_mgr.set_message(f"Removed {len(selected_ids)} containers")
+                    action_taken = True
+            
+            elif key == 'd' and tab == "images":
+                if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} images?"):
+                    for image_id in selected_ids:
+                        backend.remove_image(image_id)
+                    state_mgr.set_message(f"Removed {len(selected_ids)} images")
+                    action_taken = True
+            
+            elif key == 'p' and tab == "images":
+                backend.prune_all()
+                state_mgr.set_message("Pruned unused Docker resources")
+                action_taken = True
+                
+            elif key == 'd' and tab == "volumes":
+                if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} volumes?"):
+                    for volume_name in selected_ids:
+                        backend.remove_volume(volume_name)
+                    state_mgr.set_message(f"Removed {len(selected_ids)} volumes")
+                    action_taken = True
+                    
+            elif key == 'd' and tab == "networks":
+                if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} networks?"):
+                    for network_id in selected_ids:
+                        backend.remove_network(network_id)
+                    state_mgr.set_message(f"Removed {len(selected_ids)} networks")
+                    action_taken = True
+                    
+            elif key == 'U' and tab == "compose":
+                for project_name in selected_ids:
+                    backend.compose_up(project_name)
+                state_mgr.set_message(f"Started {len(selected_ids)} compose projects")
+                action_taken = True
+                
+            elif key == 'D' and tab == "compose":
+                if ask_confirmation(stdscr, h//2, w//2, f"Stop {len(selected_ids)} compose projects?"):
+                    for project_name in selected_ids:
+                        backend.compose_down(project_name)
+                    state_mgr.set_message(f"Stopped {len(selected_ids)} compose projects")
+                    action_taken = True
+                    
+            elif key == 'r' and tab == "compose":
+                for project_name in selected_ids:
+                    backend.compose_remove(project_name)
+                state_mgr.set_message(f"Removed {len(selected_ids)} compose projects")
+                action_taken = True
+
+        # --- SINGLE ITEM ACTIONS ---
+        else:
+            # --- CONTAINER ACTIONS ---
+            if key == 's' and tab == "containers":
+                backend.start_container(item_id)
+                action_taken = True
+            elif key == 't' and tab == "containers":
+                if ask_confirmation(stdscr, h//2, w//2, "Stop container?"):
+                     backend.stop_container(item_id)
+                     action_taken = True
+            elif key == 'r' and tab == "containers":
+                backend.restart_container(item_id)
+                action_taken = True
+            elif key == 'z' and tab == "containers":
+                c_info = next((c for c in state.containers if c.id == item_id), None)
+                if c_info:
+                    if c_info.status == "paused": backend.unpause_container(item_id)
+                    elif c_info.status == "running": backend.pause_container(item_id)
+            elif key == 'n' and tab == "containers":
+                new_name = prompt_input(stdscr, h//2, w//2, "New Name: ")
+                if new_name: backend.rename_container(item_id, new_name)
+            elif key == 'k' and tab == "containers":
+                repo = prompt_input(stdscr, h//2, w//2, "Repository: ")
+                tag = prompt_input(stdscr, h//2, w//2, "Tag (optional): ")
+                if repo: backend.commit_container(item_id, repo, tag if tag else None)
+            elif key == 'cp' and tab == "containers":
+                src = prompt_input(stdscr, h//2, w//2, "Source Path: ")
+                dest = prompt_input(stdscr, h//2, w//2, "Dest Path (in container): ")
+                if src and dest: backend.copy_to_container(item_id, src, dest)
+            elif key == 'x' and tab == "containers":
+                curses.def_prog_mode()
+                curses.endwin()
+                try:
+                    subprocess.call(["docker", "exec", "-it", item_id, "/bin/bash"])
+                except Exception:
+                    try: subprocess.call(["docker", "exec", "-it", item_id, "sh"])
+                    except: pass
+                curses.reset_prog_mode()
+                curses.curs_set(0)
+                stdscr.nodelay(True)
+                stdscr.clearok(True)
+                stdscr.refresh()
+            elif key == 'l' and tab == "containers":
+                curses.def_prog_mode()
+                curses.endwin()
+                try: subprocess.call(f"docker logs {item_id} 2>&1 | less -R", shell=True)
+                except Exception: pass
+                curses.reset_prog_mode()
+                curses.curs_set(0)
+                stdscr.nodelay(True)
+                stdscr.clearok(True)
+                stdscr.refresh()
         
         # --- COMMON ---
         elif key == 'i':
@@ -119,7 +198,6 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
             curses.curs_set(0)
             stdscr.nodelay(True)
             stdscr.clearok(True)
-            stdscr.refresh()
             stdscr.refresh()
         elif key == 'd':
             if ask_confirmation(stdscr, h//2, w//2, f"Delete {tab[:-1]}?"):
@@ -237,7 +315,8 @@ def main(stdscr):
     try:
         curses.curs_set(0)
         stdscr.nodelay(True)
-        stdscr.timeout(100)
+        # Use configured refresh interval
+        stdscr.timeout(config_manager.get_refresh_interval())
         init_colors()
         
         backend = DockerBackend()
@@ -364,8 +443,30 @@ def main(stdscr):
                 elif key == ord('3'): state_mgr.set_tab("volumes")
                 elif key == ord('4'): state_mgr.set_tab("networks")
                 elif key == ord('5'): state_mgr.set_tab("compose")
+                elif key == ord('6'): state_mgr.set_tab("stats")
                 elif key == ord('\t') or key == 9:
                     state_mgr.toggle_focus()
+                
+                elif key == ord('b') or key == ord('B'):
+                    # Toggle bulk select mode
+                    state_mgr.toggle_bulk_select_mode()
+                
+                elif key == ord(' '):
+                    # Space to toggle selection in bulk mode
+                    if state.is_filtering:
+                        state_mgr.set_filter_text(state.filter_text + ' ')
+                    else:
+                        state_mgr.toggle_item_selection()
+                
+                elif key == ord('a') or key == ord('A'):
+                    # Select all in bulk mode
+                    if state.bulk_select_mode:
+                        state_mgr.select_all_items()
+                
+                elif key == ord('d') or key == ord('D'):
+                    # Deselect all in bulk mode (only in bulk mode, not for delete action)
+                    if state.bulk_select_mode:
+                        state_mgr.deselect_all_items()
                 
                 elif key == curses.KEY_UP:
                     split_y = int(h * 0.6)
@@ -417,13 +518,24 @@ def main(stdscr):
                 elif key == ord('P'): backend.prune_all()
                 
                 elif key in (10, 13): # Enter
-                    item_id = state_mgr.get_selected_item_id()
-                    if item_id:
-                        action_key = action_menu(stdscr, h//2, w//2, state.selected_tab, item_id)
+                    if state.bulk_select_mode:
+                        selected_ids = state_mgr.get_selected_items()
+                        action_key = action_menu(stdscr, h//2, w//2, state.selected_tab, None, True)
                         stdscr.clearok(True)
                         stdscr.refresh()
                         if action_key:
-                            handle_action(action_key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
+                            action_taken = handle_bulk_action(action_key, state.selected_tab, selected_ids, backend, stdscr, state_mgr)
+                            if action_taken:
+                                list_worker.force_refresh()
+                    else:
+                        item_id = state_mgr.get_selected_item_id()
+                        if item_id:
+                            action_key = action_menu(stdscr, h//2, w//2, state.selected_tab, item_id, False)
+                            stdscr.clearok(True)
+                            stdscr.refresh()
+                            if action_key:
+                                handle_action(action_key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
+                                list_worker.force_refresh()
                 
                 else:
                     item_id = state_mgr.get_selected_item_id()

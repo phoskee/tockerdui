@@ -35,8 +35,8 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/TUO_USERNAME/dockterm_v2"
-"Bug Tracker" = "https://github.com/TUO_USERNAME/dockterm_v2/issues"
+"Homepage" = "https://github.com/phoskee/tockerdui"
+"Bug Tracker" = "https://github.com/phoskee/tockerdui/issues"
 
 [project.scripts]
 tockerdui = "tockerdui.main:main"

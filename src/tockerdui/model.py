@@ -33,7 +33,7 @@ AppState Structure:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 @dataclass
 class ContainerInfo:
@@ -45,6 +45,7 @@ class ContainerInfo:
     project: str = "standalone"
     cpu_percent: str = "--"
     ram_usage: str = "--"
+    selected: bool = False  # For bulk selection mode
 
 @dataclass
 class ImageInfo:
@@ -53,12 +54,14 @@ class ImageInfo:
     tags: List[str]
     size_mb: float
     created: str
+    selected: bool = False  # For bulk selection mode
 
 @dataclass
 class VolumeInfo:
     name: str
     driver: str
     mountpoint: str
+    selected: bool = False  # For bulk selection mode
 
 @dataclass
 class NetworkInfo:
@@ -66,12 +69,14 @@ class NetworkInfo:
     name: str
     driver: str
     subnet: str
+    selected: bool = False  # For bulk selection mode
 
 @dataclass
 class ComposeInfo:
     name: str
     config_files: str
     status: str # running, exited, mixed
+    selected: bool = False  # For bulk selection mode
 
 @dataclass
 class AppState:
@@ -80,7 +85,7 @@ class AppState:
     volumes: List[VolumeInfo] = field(default_factory=list)
     networks: List[NetworkInfo] = field(default_factory=list)
     composes: List[ComposeInfo] = field(default_factory=list)
-    selected_tab: str = "containers" # containers, images, volumes, networks, compose
+    selected_tab: str = "containers" # containers, images, volumes, networks, compose, stats
     selected_index: int = 0
     scroll_offset: int = 0
     logs: List[str] = field(default_factory=list)
@@ -94,3 +99,5 @@ class AppState:
     self_usage: str = ""
     last_error: str = ""  # Error message to display
     error_timestamp: float = 0.0  # Time when error was set (for auto-clear after 3s)
+    bulk_select_mode: bool = False  # Enable bulk selection
+    stats_data: dict = field(default_factory=dict)  # Statistics dashboard data

@@ -46,6 +46,7 @@ import curses
 from dataclasses import dataclass
 from typing import List, Callable
 from .model import AppState
+from .stats import StatsCollector, ChartRenderer
 
 # --- COLUMN LAYOUT CONSTANTS ---
 
@@ -114,7 +115,8 @@ def draw_header(stdscr, width, current_tab):
         ("IMAGES", "images"),
         ("VOLUMES", "volumes"),
         ("NETWORKS", "networks"),
-        ("COMPOSE", "compose")
+        ("COMPOSE", "compose"),
+        ("STATS", "stats")
     ]
     
     # Title bar
@@ -152,7 +154,10 @@ def draw_footer(stdscr, width, height, state: AppState):
         sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
         # Shortcut bar
         focus_txt = f" TAB: Focus ({state.focused_pane.upper()}) "
-        help_txt = "| Enter: Menu | P: Prune | q: Quit | ?: Help "
+        if state.bulk_select_mode:
+            help_txt = "| SPACE: Toggle | A: All | D: None | B: Bulk OFF | Enter: Bulk Actions | q: Quit "
+        else:
+            help_txt = "| Enter: Menu | P: Prune | B: Bulk ON | q: Quit | ?: Help "
         
         # Draw Focus info
         try:
@@ -205,12 +210,17 @@ def draw_list(win, state: AppState):
             title, items = " Volumes ", state.volumes
         elif tab == "networks":
             title, items = " Networks ", state.networks
-        else:  # compose
+        elif tab == "compose":
             title, items = " Compose Projects ", state.composes
+        elif tab == "stats":
+            draw_stats_dashboard(win, state)
+            return
 
-        # Add filter indicator to title
+        # Add filter and bulk mode indicators to title
         if state.filter_text:
             title += f" (Matches: '{state.filter_text}') "
+        if state.bulk_select_mode:
+            title += "[BULK] "
 
         # Render header
         win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
@@ -242,11 +252,17 @@ def draw_list(win, state: AppState):
                 else: 
                     s_color = curses.color_pair(3)
                 
-                status_char = "*"
-                status_style = s_color | (curses.A_REVERSE if is_selected else 0)
-                
-                win.addstr(start_y + i, 1, f" {status_char} ", status_style)
-                win.addstr(start_y + i, 5, line[:w-6], row_style)
+                # Show checkbox in bulk mode or status indicator
+                if state.bulk_select_mode:
+                    checkbox = "[x]" if item.selected else "[ ]"
+                    status_style = s_color | (curses.A_REVERSE if is_selected else 0)
+                    win.addstr(start_y + i, 1, f" {checkbox} ", status_style)
+                    win.addstr(start_y + i, 7, line[:w-8], row_style)
+                else:
+                    status_char = "*"
+                    status_style = s_color | (curses.A_REVERSE if is_selected else 0)
+                    win.addstr(start_y + i, 1, f" {status_char} ", status_style)
+                    win.addstr(start_y + i, 5, line[:w-6], row_style)
         else:
             # Batch rendering for non-container tabs
             for i, item in enumerate(visible_items):
@@ -254,8 +270,15 @@ def draw_list(win, state: AppState):
                 is_selected = (actual_index == state.selected_index)
                 row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
                 
-                line = _format_row_for_tab(tab, item, w, is_selected)
-                win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
+                # Show checkbox in bulk mode
+                if state.bulk_select_mode:
+                    checkbox = "[x]" if item.selected else "[ ]"
+                    win.addstr(start_y + i, 1, f" {checkbox} ", row_style)
+                    line = _format_row_for_tab(tab, item, w, is_selected)
+                    win.addstr(start_y + i, 6, line[:w-7].ljust(w-7), row_style)
+                else:
+                    line = _format_row_for_tab(tab, item, w, is_selected)
+                    win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
     except Exception as e:
         pass  # Gracefully handle rendering errors
     
@@ -496,18 +519,33 @@ def ask_confirmation(stdscr, cy, cx, question: str) -> bool:
             return False
         elif key == ord('q'): return False
 
-def action_menu(stdscr, cy, cx, tab, item_id):
+def action_menu(stdscr, cy, cx, tab, item_id, bulk_mode=False):
     actions = []
     if tab == "containers":
-        actions = [("Start", "s"), ("Stop", "t"), ("Restart", "r"), ("Pause/Unpause", "z"), ("Rename", "n"), ("Commit", "k"), ("Copy To", "cp"), ("Exec Shell", "x"), ("Logs", "l"), ("Inspect", "i"), ("Delete", "d")]
+        if bulk_mode:
+            actions = [("Start All", "s"), ("Stop All", "t"), ("Restart All", "r"), ("Remove All", "d")]
+        else:
+            actions = [("Start", "s"), ("Stop", "t"), ("Restart", "r"), ("Pause/Unpause", "z"), ("Rename", "n"), ("Commit", "k"), ("Copy To", "cp"), ("Exec Shell", "x"), ("Logs", "l"), ("Inspect", "i"), ("Delete", "d")]
     elif tab == "images":
-        actions = [("Run", "R"), ("Pull/Update", "p"), ("Save (tar)", "S"), ("Load (tar)", "L"), ("History", "H"), ("Build", "B"), ("Inspect", "i"), ("Delete", "d")]
+        if bulk_mode:
+            actions = [("Remove All", "d"), ("Prune Unused", "p")]
+        else:
+            actions = [("Run", "R"), ("Pull/Update", "p"), ("Save (tar)", "S"), ("Load (tar)", "L"), ("History", "H"), ("Build", "B"), ("Inspect", "i"), ("Delete", "d")]
     elif tab == "volumes":
-        actions = [("Create", "C"), ("Inspect", "i"), ("Delete", "d")]
+        if bulk_mode:
+            actions = [("Remove All", "d")]
+        else:
+            actions = [("Create", "C"), ("Inspect", "i"), ("Delete", "d")]
     elif tab == "networks":
-        actions = [("Inspect", "i"), ("Delete", "d")]
+        if bulk_mode:
+            actions = [("Remove All", "d")]
+        else:
+            actions = [("Inspect", "i"), ("Delete", "d")]
     elif tab == "compose":
-        actions = [("Up", "U"), ("Down", "D"), ("Restart", "r"), ("Pull", "P")]
+        if bulk_mode:
+            actions = [("Up All", "U"), ("Down All", "D"), ("Remove All", "r")]
+        else:
+            actions = [("Up", "U"), ("Down", "D"), ("Restart", "r"), ("Pull", "P")]
 
     if not actions: return None
 
@@ -571,6 +609,123 @@ def draw_help_modal(stdscr, cy, cx):
         else: win.addstr(1+i, 2, line)
     win.refresh()
     win.getch()
+
+def draw_stats_dashboard(win, state: AppState):
+    """Draw the statistics dashboard."""
+    h, w = win.getmaxyx()
+    win.erase()
+    win.box()
+    
+    # Title
+    title = " DOCKER STATISTICS DASHBOARD "
+    win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
+    
+    # Collect statistics
+    collector = StatsCollector()
+    stats = collector.collect_stats(
+        state.containers, 
+        state.images, 
+        state.volumes, 
+        state.networks, 
+        state.composes,
+        state.self_usage
+    )
+    
+    # Layout sections
+    y = 2
+    x = 2
+    section_width = (w - 6) // 2
+    
+    try:
+        # Container Statistics
+        if y + 10 < h:
+            win.addstr(y, x, "📦 CONTAINER STATS", curses.A_BOLD | curses.color_pair(5))
+            y += 1
+            c_stats = stats['containers']
+            win.addstr(y, x, f"Total: {c_stats['total']}")
+            y += 1
+            win.addstr(y, x, f"Running: {c_stats['running']} | Stopped: {c_stats['stopped']} | Paused: {c_stats['paused']}")
+            y += 1
+            win.addstr(y, x, f"Avg CPU: {c_stats['avg_cpu']:.1f}% | Avg Memory: {c_stats['avg_memory']:.1f}MB")
+            y += 2
+            
+            # Container status pie chart
+            status_data = {
+                'Running': c_stats['running'],
+                'Stopped': c_stats['stopped'],
+                'Paused': c_stats['paused']
+            }
+            if any(status_data.values()):
+                chart_lines = ChartRenderer.pie_chart(status_data, width=section_width-5)
+                for line in chart_lines:
+                    if y < h - 2:
+                        win.addstr(y, x, line[:w-4])
+                        y += 1
+                y += 1
+        
+        # System Usage
+        if y + 6 < h:
+            win.addstr(y, x, "💻 SYSTEM USAGE", curses.A_BOLD | curses.color_pair(5))
+            y += 1
+            sys_stats = stats['system']
+            win.addstr(y, x, f"Tockerdui CPU: {sys_stats['cpu_percent']:.1f}%")
+            y += 1
+            win.addstr(y, x, f"Tockerdui Memory: {sys_stats['memory_mb']:.1f}MB")
+            y += 2
+        
+        # Image Statistics
+        if x + section_width + 5 < w and y < h:
+            img_y = 2
+            img_x = x + section_width + 3
+            win.addstr(img_y, img_x, "🖼️  IMAGE STATS", curses.A_BOLD | curses.color_pair(5))
+            img_y += 1
+            i_stats = stats['images']
+            win.addstr(img_y, img_x, f"Total: {i_stats['total']} ({i_stats['total_size_gb']:.1f}GB)")
+            img_y += 1
+            win.addstr(img_y, img_x, f"Tagged: {i_stats['tagged']} | Untagged: {i_stats['untagged']}")
+            img_y += 1
+            win.addstr(img_y, img_x, f"Average Size: {i_stats['avg_size_mb']:.1f}MB")
+            img_y += 2
+            
+            # Size distribution
+            size_data = i_stats['size_distribution']
+            if any(size_data.values()):
+                win.addstr(img_y, img_x, "Size Distribution:", curses.A_BOLD)
+                img_y += 1
+                for size_range, count in size_data.items():
+                    if img_y < h - 2 and img_x + len(f"{size_range}: {count}") < w - 2:
+                        win.addstr(img_y, img_x, f"{size_range}: {count}")
+                        img_y += 1
+        
+        # Volume & Network Stats
+        if y + 8 < h and x + section_width + 5 < w:
+            vn_y = img_y + 3 if 'img_y' in locals() else y
+            vn_x = x + section_width + 3
+            
+            if vn_y < h - 6:
+                win.addstr(vn_y, vn_x, "📁 VOLUME & NETWORK", curses.A_BOLD | curses.color_pair(5))
+                vn_y += 1
+                v_stats = stats['volumes']
+                n_stats = stats['networks']
+                win.addstr(vn_y, vn_x, f"Volumes: {v_stats['total']} | Networks: {n_stats['total']}")
+                vn_y += 1
+                
+                # Volume drivers
+                if v_stats['drivers']:
+                    drivers = ', '.join(v_stats['drivers'].keys()[:3])  # Limit display
+                    win.addstr(vn_y, vn_x, f"Volume Drivers: {drivers}")
+                    vn_y += 1
+                
+                # Network drivers
+                if n_stats['drivers']:
+                    networks = ', '.join(n_stats['drivers'].keys()[:3])  # Limit display
+                    win.addstr(vn_y, vn_x, f"Network Drivers: {networks}")
+        
+    except Exception:
+        pass  # Graceful error handling for display issues
+    
+    win.noutrefresh()
+
 
 def draw_update_modal(stdscr, cy, cx):
     lines = [

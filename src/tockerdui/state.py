@@ -65,10 +65,11 @@ class StateManager:
     
     def update_containers(self, containers):
         with self._lock: 
-            stats_map = {c.id: (c.cpu_percent, c.ram_usage) for c in self._state.containers}
+            # Preserve selection state during updates
+            stats_map = {c.id: (c.cpu_percent, c.ram_usage, c.selected) for c in self._state.containers}
             for c in containers:
                 if c.id in stats_map:
-                    c.cpu_percent, c.ram_usage = stats_map[c.id]
+                    c.cpu_percent, c.ram_usage, c.selected = stats_map[c.id]
             self._state.containers = containers
             self._inc_version()
     
@@ -83,21 +84,41 @@ class StateManager:
 
     def update_images(self, images: List['ImageInfo']) -> None:
         with self._lock: 
+            # Preserve selection state during updates
+            selection_map = {img.id: img.selected for img in self._state.images}
+            for img in images:
+                if img.id in selection_map:
+                    img.selected = selection_map[img.id]
             self._state.images = images
             self._inc_version()
 
     def update_volumes(self, volumes: List['VolumeInfo']) -> None:
         with self._lock: 
+            # Preserve selection state during updates
+            selection_map = {vol.name: vol.selected for vol in self._state.volumes}
+            for vol in volumes:
+                if vol.name in selection_map:
+                    vol.selected = selection_map[vol.name]
             self._state.volumes = volumes
             self._inc_version()
 
     def update_networks(self, networks):
         with self._lock: 
+            # Preserve selection state during updates
+            selection_map = {net.id: net.selected for net in self._state.networks}
+            for net in networks:
+                if net.id in selection_map:
+                    net.selected = selection_map[net.id]
             self._state.networks = networks
             self._inc_version()
     
     def update_composes(self, composes):
         with self._lock: 
+            # Preserve selection state during updates
+            selection_map = {comp.name: comp.selected for comp in self._state.composes}
+            for comp in composes:
+                if comp.name in selection_map:
+                    comp.selected = selection_map[comp.name]
             self._state.composes = composes
             self._inc_version()
 
@@ -137,7 +158,60 @@ class StateManager:
             self._state.message = "" # Clear message on tab switch
             self._state.focused_pane = "list"
             self._state.logs_scroll_offset = 999999 # Auto-scroll to bottom
+            self._state.bulk_select_mode = False # Reset bulk mode on tab switch
             self._inc_version()
+
+    def toggle_bulk_select_mode(self):
+        with self._lock:
+            self._state.bulk_select_mode = not self._state.bulk_select_mode
+            self._inc_version()
+
+    def toggle_item_selection(self):
+        """Toggle selection for current item in bulk mode."""
+        with self._lock:
+            if not self._state.bulk_select_mode:
+                return
+            
+            current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
+            if self._state.selected_index < len(current_list):
+                item = current_list[self._state.selected_index]
+                item.selected = not item.selected
+                self._inc_version()
+
+    def select_all_items(self):
+        """Select all items in current tab."""
+        with self._lock:
+            current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
+            for item in current_list:
+                item.selected = True
+            self._inc_version()
+
+    def deselect_all_items(self):
+        """Deselect all items in current tab."""
+        with self._lock:
+            current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
+            for item in current_list:
+                item.selected = False
+            self._inc_version()
+
+    def get_selected_items(self):
+        """Get list of selected item IDs."""
+        with self._lock:
+            current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
+            selected_ids = []
+            for item in current_list:
+                if item.selected:
+                    if self._state.selected_tab == "containers":
+                        selected_ids.append(item.id)
+                    elif self._state.selected_tab == "images":
+                        selected_ids.append(item.id)
+                    elif self._state.selected_tab == "volumes":
+                        selected_ids.append(item.name)
+                    elif self._state.selected_tab == "networks":
+                        selected_ids.append(item.id)
+                    elif self._state.selected_tab == "compose":
+                        selected_ids.append(item.name)
+            return selected_ids
 
     def toggle_focus(self):
         with self._lock:
@@ -198,8 +272,9 @@ class StateManager:
         elif tab == "volumes": items = list(self._state.volumes)
         elif tab == "networks": items = list(self._state.networks)
         elif tab == "compose": items = list(self._state.composes)
+        elif tab == "stats": items = []  # Stats tab has no list items
         
-        if not items: return []
+        if not items: return [] 
 
         # Sort items
         if tab == "containers":
@@ -381,21 +456,39 @@ class LogsWorker(threading.Thread):
         self.state_manager = state_manager
         self.backend = backend
         self.running = True
+        self.last_container_id = None
+        self.follow_mode = False
+        self.log_buffer = []
+        self.max_buffer_size = 1000
 
     def run(self) -> None:
         while self.running:
             try:
                 snapshot = self.state_manager.get_snapshot()
                 if snapshot.selected_tab == "containers":
-                    # Always fetch logs for selected container to keep preview live
                     cid = self.state_manager.get_selected_item_id()
+                    
+                    # Check if container changed
+                    if cid != self.last_container_id:
+                        self.last_container_id = cid
+                        self.log_buffer.clear()
+                        self.follow_mode = True
+                    
                     if cid:
-                        logs = self.backend.get_logs(cid, tail=1000) # Increased tail
-                        self.state_manager.set_logs(logs) # This will preserve scroll if possible? No, we need logic.
+                        # Get recent logs and update buffer
+                        new_logs = self.backend.get_logs(cid, tail=50)
+                        
+                        # Only update if we have new content (simplified check)
+                        if new_logs and (not self.log_buffer or new_logs[-1] != self.log_buffer[-1]):
+                            self.log_buffer.extend(new_logs)
+                            
+                            # Maintain buffer size
+                            if len(self.log_buffer) > self.max_buffer_size:
+                                self.log_buffer = self.log_buffer[-self.max_buffer_size:]
+                            
+                            self.state_manager.set_logs(list(self.log_buffer))
                 
-                time.sleep(0.5) # Smooth enough
-                
-                time.sleep(0.5) # Smooth enough
+                time.sleep(0.5) # Smooth polling interval
             except Exception:
                 time.sleep(1.0)
 
