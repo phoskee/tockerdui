@@ -13,13 +13,22 @@ from unittest.mock import MagicMock, patch
 from tockerdui.backend import DockerBackend
 from tockerdui.state import StateManager
 from tockerdui.model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
+from tockerdui.cache import cache_manager
 import subprocess
 
 
 class TestBackendErrorHandling:
     """Test error handling with @docker_safe decorator."""
 
-    @patch("docker.from_env")
+    def setup_method(self):
+        """Clear cache before each test."""
+        cache_manager.invalidate()
+
+    def teardown_method(self):
+        """Clear cache after each test."""
+        cache_manager.invalidate()
+
+    @patch("tockerdui.backend.docker.from_env")
     def test_get_containers_no_docker_connection(self, mock_docker_env):
         """Test graceful handling when Docker is not available."""
         mock_docker_env.side_effect = Exception("Docker daemon not running")
@@ -31,7 +40,7 @@ class TestBackendErrorHandling:
         results = backend.get_containers()
         assert results == []
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     def test_start_container_docker_error(self, mock_docker_env):
         """Test that container start handles Docker errors gracefully."""
         mock_client = MagicMock()
@@ -45,7 +54,7 @@ class TestBackendErrorHandling:
         result = backend.start_container("nonexistent")
         assert result is None
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     def test_get_images_empty(self, mock_docker_env):
         """Test getting images when none exist."""
         mock_client = MagicMock()
@@ -56,7 +65,7 @@ class TestBackendErrorHandling:
         results = backend.get_images()
         assert results == []
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     def test_remove_container_force(self, mock_docker_env):
         """Test that remove_container uses force=True."""
         mock_client = MagicMock()
@@ -73,7 +82,7 @@ class TestBackendErrorHandling:
 class TestPathValidation:
     """Test path validation in copy_to_container."""
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_rejects_absolute_src_path(self, mock_exists, mock_docker_env):
         """Test that absolute paths are rejected for security."""
@@ -87,7 +96,7 @@ class TestPathValidation:
         # Should not reach put_archive
         mock_client.containers.get.assert_not_called()
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_rejects_home_src_path(self, mock_exists, mock_docker_env):
         """Test that home directory paths are rejected."""
@@ -99,7 +108,7 @@ class TestPathValidation:
         assert result is None
         mock_client.containers.get.assert_not_called()
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_rejects_path_traversal_src(self, mock_exists, mock_docker_env):
         """Test that path traversal attempts are rejected."""
@@ -111,7 +120,7 @@ class TestPathValidation:
         assert result is None
         mock_client.containers.get.assert_not_called()
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_rejects_path_traversal_dest(self, mock_exists, mock_docker_env):
         """Test that path traversal in dest is rejected."""
@@ -124,7 +133,7 @@ class TestPathValidation:
         assert result is None
         mock_client.containers.get.assert_not_called()
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_rejects_nonexistent_src(self, mock_exists, mock_docker_env):
         """Test that nonexistent source files are rejected."""
@@ -137,7 +146,7 @@ class TestPathValidation:
         assert result is None
         mock_client.containers.get.assert_not_called()
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("os.path.exists")
     def test_copy_accepts_valid_relative_path(self, mock_exists, mock_docker_env):
         """Test that valid relative paths are accepted."""
@@ -158,7 +167,7 @@ class TestPathValidation:
 class TestComposeActions:
     """Test Docker Compose operations."""
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("subprocess.run")
     def test_compose_up(self, mock_run, mock_docker_env):
         """Test compose_up calls correct subprocess."""
@@ -176,7 +185,7 @@ class TestComposeActions:
         assert "myproject" in args
         assert "up" in args
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("subprocess.run")
     def test_compose_down(self, mock_run, mock_docker_env):
         """Test compose_down calls correct subprocess."""
@@ -190,7 +199,7 @@ class TestComposeActions:
         args = mock_run.call_args[0][0]
         assert "down" in args
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("subprocess.run")
     def test_compose_remove(self, mock_run, mock_docker_env):
         """Test compose_remove calls with -v flag."""
@@ -204,7 +213,7 @@ class TestComposeActions:
         args = mock_run.call_args[0][0]
         assert "-v" in args  # Volume removal flag
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("subprocess.run")
     def test_compose_pause(self, mock_run, mock_docker_env):
         """Test compose_pause calls correct subprocess."""
@@ -218,7 +227,7 @@ class TestComposeActions:
         args = mock_run.call_args[0][0]
         assert "pause" in args
 
-    @patch("docker.from_env")
+    @patch("tockerdui.backend.docker.from_env")
     @patch("subprocess.run")
     def test_compose_error_handling(self, mock_run, mock_docker_env):
         """Test that compose errors are handled gracefully."""
