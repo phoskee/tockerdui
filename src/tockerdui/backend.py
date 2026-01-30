@@ -33,6 +33,23 @@ class DockerBackend:
         except Exception:
             return []
 
+    def get_self_usage(self) -> str:
+        try:
+            pid = os.getpid()
+            # ps -p PID -o %cpu,rss
+            cmd = ["ps", "-p", str(pid), "-o", "%cpu,rss"]
+            output = subprocess.check_output(cmd).decode().strip().splitlines()
+            if len(output) >= 2:
+                vals = output[1].strip().split()
+                if len(vals) >= 2:
+                    cpu = vals[0]
+                    rss_kb = int(vals[1])
+                    rss_mb = rss_kb / 1024
+                    return f"CPU: {cpu}% MEM: {rss_mb:.0f}MB"
+            return ""
+        except Exception:
+            return ""
+
     def get_container_stats(self, container_id: str) -> Tuple[str, str]:
         if not self.client: return "--", "--"
         try:

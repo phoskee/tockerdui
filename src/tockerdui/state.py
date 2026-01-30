@@ -54,7 +54,7 @@ class StateManager:
             self._state.logs = ["Loading..."] # Clear logs immediately
             self._state.message = "" # Clear message on tab switch
             self._state.focused_pane = "list"
-            self._state.logs_scroll_offset = 0
+            self._state.logs_scroll_offset = 999999 # Auto-scroll to bottom
 
     def toggle_focus(self):
         with self._lock:
@@ -170,7 +170,7 @@ class StateManager:
                     # Clear logs on selection change for containers
                     if self._state.selected_tab == "containers":
                         self._state.logs = ["Loading..."]
-                        self._state.logs_scroll_offset = 0 # Reset log scroll
+                        self._state.logs_scroll_offset = 999999 # Auto-scroll to bottom
 
                     if page_height:
                         if self._state.selected_index < self._state.scroll_offset:
@@ -204,9 +204,14 @@ class StateManager:
                 sort_mode=self._state.sort_mode,
                 update_available=self._state.update_available,
                 focused_pane=self._state.focused_pane,
-                logs_scroll_offset=self._state.logs_scroll_offset
+                logs_scroll_offset=self._state.logs_scroll_offset,
+                self_usage=self._state.self_usage
             )
     
+    def update_self_usage(self, usage: str):
+        with self._lock:
+            self._state.self_usage = usage
+
     def set_update_available(self, available: bool):
         with self._lock:
             self._state.update_available = available
@@ -269,14 +274,14 @@ class LogsWorker(threading.Thread):
         while self.running:
             try:
                 snapshot = self.state_manager.get_snapshot()
-                if snapshot.selected_tab == "containers" and snapshot.focused_pane == "details":
-                    # Only fetch if we are looking at them? 
-                    # Or always fetch if tab is containers?
-                    # Better always fetch if tab=containers so they are ready when we focus.
+                if snapshot.selected_tab == "containers":
+                    # Always fetch logs for selected container to keep preview live
                     cid = self.state_manager.get_selected_item_id()
                     if cid:
-                        logs = self.backend.get_logs(cid, tail=200) # Fetch more lines
-                        self.state_manager.set_logs(logs)
+                        logs = self.backend.get_logs(cid, tail=1000) # Increased tail
+                        self.state_manager.set_logs(logs) # This will preserve scroll if possible? No, we need logic.
+                
+                time.sleep(0.5) # Smooth enough
                 
                 time.sleep(0.5) # Smooth enough
             except Exception:
@@ -293,6 +298,9 @@ class StatsWorker(threading.Thread):
         # Slower loop, independent of UI/Resources
         while self.running:
             try:
+                # Update self usage
+                self.state_manager.update_self_usage(self.backend.get_self_usage())
+                
                 snapshot = self.state_manager.get_snapshot()
                 running_containers = [c for c in snapshot.containers if c.status == "running"]
                 

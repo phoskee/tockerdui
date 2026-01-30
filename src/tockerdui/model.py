@@ -57,3 +57,4 @@ class AppState:
     update_available: bool = False
     focused_pane: str = "list" # "list" or "details"
     logs_scroll_offset: int = 0
+    self_usage: str = ""

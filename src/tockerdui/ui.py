@@ -65,6 +65,13 @@ def draw_footer(stdscr, width, height, state: AppState):
         stdscr.addstr(bar_y, x_pos, focus_txt, curses.color_pair(4) | curses.A_BOLD)
         x_pos += len(focus_txt)
         stdscr.addstr(bar_y, x_pos, help_txt, curses.A_DIM)
+        
+        # Draw Self Usage (Right aligned)
+        if state.self_usage:
+            usage_txt = f" [{state.self_usage}] "
+            u_x = width - len(usage_txt) - 1
+            if u_x > x_pos + len(help_txt):
+                stdscr.addstr(bar_y, u_x, usage_txt, curses.color_pair(6) | curses.A_BOLD)
     
     stdscr.noutrefresh()
 
