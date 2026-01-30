@@ -55,3 +55,5 @@ class AppState:
     is_filtering: bool = False
     sort_mode: str = "name" # name, status, cpu
     update_available: bool = False
+    focused_pane: str = "list" # "list" or "details"
+    logs_scroll_offset: int = 0

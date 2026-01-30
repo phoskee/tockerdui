@@ -53,6 +53,35 @@ class StateManager:
             self._state.is_filtering = False
             self._state.logs = ["Loading..."] # Clear logs immediately
             self._state.message = "" # Clear message on tab switch
+            self._state.focused_pane = "list"
+            self._state.logs_scroll_offset = 0
+
+    def toggle_focus(self):
+        with self._lock:
+            if self._state.focused_pane == "list":
+                self._state.focused_pane = "details"
+            else:
+                self._state.focused_pane = "list"
+
+    def scroll_logs(self, delta, page_height):
+        with self._lock:
+            if not self._state.logs: return
+            # Default to tracking tail if we are at bottom?
+            # For now simple scrolling
+            new_offset = self._state.logs_scroll_offset + delta
+            
+            # Max offset: so that the last page is full. log length - page height
+            # If logs=100, page=10, max_offset=90.
+            # But we want to allow user to scroll to see the last line at bottom of page?
+            # Actually standard simple:
+            # visible = logs[offset : offset + page]
+            # to show msg N at pos 0, offset=N.
+            # to show msg LAST at pos LAST_ON_PAGE?
+            
+            # Let's say we just clamp 0 to len-1
+            max_offset = max(0, len(self._state.logs) - page_height + 1)
+            
+            self._state.logs_scroll_offset = max(0, min(new_offset, max_offset))
 
     def set_filtering(self, active: bool):
         with self._lock:
@@ -125,6 +154,9 @@ class StateManager:
 
     def move_selection(self, delta, page_height=None):
         with self._lock:
+            # If focused on details, don't move list selection?
+            # actually logic will be handled in main.py: if focus==details call scroll_logs, else call move_selection.
+            # But just in case, we proceed.
             current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
             current_list_len = len(current_list)
             
@@ -138,6 +170,7 @@ class StateManager:
                     # Clear logs on selection change for containers
                     if self._state.selected_tab == "containers":
                         self._state.logs = ["Loading..."]
+                        self._state.logs_scroll_offset = 0 # Reset log scroll
 
                     if page_height:
                         if self._state.selected_index < self._state.scroll_offset:
@@ -169,7 +202,9 @@ class StateManager:
                 filter_text=self._state.filter_text,
                 is_filtering=self._state.is_filtering,
                 sort_mode=self._state.sort_mode,
-                update_available=self._state.update_available
+                update_available=self._state.update_available,
+                focused_pane=self._state.focused_pane,
+                logs_scroll_offset=self._state.logs_scroll_offset
             )
     
     def set_update_available(self, available: bool):
