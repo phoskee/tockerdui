@@ -51,6 +51,7 @@ class StateManager:
             self._state.scroll_offset = 0
             self._state.filter_text = ""
             self._state.is_filtering = False
+            self._state.logs = ["Loading..."] # Clear logs immediately
             self._state.message = "" # Clear message on tab switch
 
     def set_filtering(self, active: bool):
@@ -129,13 +130,20 @@ class StateManager:
             
             if current_list_len > 0:
                 new_idx = self._state.selected_index + delta
-                self._state.selected_index = max(0, min(new_idx, current_list_len - 1))
+                new_idx = max(0, min(new_idx, current_list_len - 1))
                 
-                if page_height:
-                    if self._state.selected_index < self._state.scroll_offset:
-                        self._state.scroll_offset = self._state.selected_index
-                    elif self._state.selected_index >= self._state.scroll_offset + page_height:
-                        self._state.scroll_offset = self._state.selected_index - page_height + 1
+                # If selection actually changed
+                if new_idx != self._state.selected_index:
+                    self._state.selected_index = new_idx
+                    # Clear logs on selection change for containers
+                    if self._state.selected_tab == "containers":
+                        self._state.logs = ["Loading..."]
+
+                    if page_height:
+                        if self._state.selected_index < self._state.scroll_offset:
+                            self._state.scroll_offset = self._state.selected_index
+                        elif self._state.selected_index >= self._state.scroll_offset + page_height:
+                            self._state.scroll_offset = self._state.selected_index - page_height + 1
             else:
                  self._state.selected_index = 0
 
@@ -160,7 +168,6 @@ class StateManager:
                 message=self._state.message,
                 filter_text=self._state.filter_text,
                 is_filtering=self._state.is_filtering,
-
                 sort_mode=self._state.sort_mode,
                 update_available=self._state.update_available
             )
@@ -197,32 +204,41 @@ class BackgroundWorker(threading.Thread):
 
         while self.running:
             try:
-                # Fast loop (1s): Containers always
-                containers = self.backend.get_containers()
-                self.state_manager.update_containers(containers)
+                # Loop interval 0.2s
                 
-                # Slow loop (5s): Images, Volumes, Networks, Composes
+                # 1.0s interval for containers (5 ticks)
                 if counter % 5 == 0:
+                    containers = self.backend.get_containers()
+                    self.state_manager.update_containers(containers)
+                
+                # 5.0s interval for others (25 ticks)
+                if counter % 25 == 0:
                     self.state_manager.update_images(self.backend.get_images())
                     self.state_manager.update_volumes(self.backend.get_volumes())
                     self.state_manager.update_networks(self.backend.get_networks())
                     self.state_manager.update_composes(self.backend.get_composes())
                 
-                if counter % 2 == 0:
-                    for c in containers:
+                # 2.0s interval for stats (10 ticks)
+                if counter % 10 == 0:
+                     snapshot = self.state_manager.get_snapshot()
+                     for c in snapshot.containers:
                         if c.status == "running":
                             cpu, ram = self.backend.get_container_stats(c.id)
                             self.state_manager.update_container_stats(c.id, cpu, ram)
                 
-                snapshot = self.state_manager.get_snapshot()
-                if snapshot.selected_tab == "containers":
-                    cid = self.state_manager.get_selected_item_id()
-                    if cid:
-                        logs = self.backend.get_logs(cid, tail=20)
-                        self.state_manager.set_logs(logs)
+                # Always valid logs for selected container (every 0.2s check)
+                # But fetch logs maybe every 0.6s (3 ticks) to avoid hammering
+                if counter % 3 == 0:
+                    snapshot = self.state_manager.get_snapshot()
+                    if snapshot.selected_tab == "containers":
+                        cid = self.state_manager.get_selected_item_id()
+                        if cid:
+                            # 20 lines is good for "tail" view
+                            logs = self.backend.get_logs(cid, tail=20)
+                            self.state_manager.set_logs(logs)
                 
             except Exception:
                 pass
             
             counter += 1
-            time.sleep(1.0)
+            time.sleep(0.2)
