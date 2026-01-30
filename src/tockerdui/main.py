@@ -274,18 +274,52 @@ def main(stdscr):
                 elif key == ord('3'): state_mgr.set_tab("volumes")
                 elif key == ord('4'): state_mgr.set_tab("networks")
                 elif key == ord('5'): state_mgr.set_tab("compose")
-                elif key in (ord('h'), ord('?')): 
+                elif key == ord('\t') or key == 9:
+                    state_mgr.toggle_focus()
+                
+                elif key == curses.KEY_UP:
+                    split_y = int(h * 0.6)
+                    if state.focused_pane == "list":
+                        page_height = max(1, (split_y - 2))
+                        state_mgr.move_selection(-1, page_height)
+                    else:
+                        detail_h = h - split_y - 1
+                        logs_h = max(1, detail_h - 5) # approx header
+                        state_mgr.scroll_logs(-1, logs_h)
+                
+                elif key == curses.KEY_DOWN:
+                    split_y = int(h * 0.6)
+                    if state.focused_pane == "list":
+                        page_height = max(1, (split_y - 2))
+                        state_mgr.move_selection(1, page_height)
+                    else:
+                        detail_h = h - split_y - 1
+                        logs_h = max(1, detail_h - 5)
+                        state_mgr.scroll_logs(1, logs_h)
+                
+                elif key == curses.KEY_PPAGE: # Page Up
+                    split_y = int(h * 0.6)
+                    if state.focused_pane == "list":
+                        page_height = max(1, (split_y - 2))
+                        state_mgr.move_selection(-page_height, page_height)
+                    else:
+                        detail_h = h - split_y - 1
+                        logs_h = max(1, detail_h - 5)
+                        state_mgr.scroll_logs(-logs_h, logs_h)
+                
+                elif key == curses.KEY_NPAGE: # Page Down
+                    split_y = int(h * 0.6)
+                    if state.focused_pane == "list":
+                        page_height = max(1, (split_y - 2))
+                        state_mgr.move_selection(page_height, page_height)
+                    else:
+                        detail_h = h - split_y - 1
+                        logs_h = max(1, detail_h - 5)
+                        state_mgr.scroll_logs(logs_h, logs_h)
+                elif key == ord('h') or key == ord('?'): 
                     draw_help_modal(stdscr, h//2, w//2)
                     stdscr.clearok(True)
                     stdscr.refresh()
-                elif key == curses.KEY_UP: 
-                    split_y = int(h * 0.6)
-                    page_height = max(1, (split_y - 2) - 3)
-                    state_mgr.move_selection(-1, page_height)
-                elif key == curses.KEY_DOWN: 
-                    split_y = int(h * 0.6)
-                    page_height = max(1, (split_y - 2) - 3)
-                    state_mgr.move_selection(1, page_height)
                 elif key == ord('/'): state_mgr.set_filtering(True)
                 elif key == 27: state_mgr.set_filter_text("")
                 elif key == ord('s') and state.selected_tab == "containers": backend.start_container(item_id)

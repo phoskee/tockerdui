@@ -167,52 +167,83 @@ def draw_list(win, state: AppState):
 
     win.noutrefresh()
 
+
 def draw_details(win, state: AppState):
     h, w = win.getmaxyx()
     win.erase()
-    win.box()
-    win.addstr(0, 2, " INSPECTOR / LOGS ", curses.A_BOLD | curses.color_pair(4))
     
-    info_lines = []
+    # Highlight if focused
+    is_focused = (state.focused_pane == "details")
+    border_color = curses.color_pair(4) if is_focused else curses.color_pair(1)
+    
+    win.attron(border_color)
+    win.box()
+    title = " INSPECTOR / LOGS "
+    win.addstr(0, 2, title, curses.A_BOLD if is_focused else curses.A_NORMAL)
+    win.attroff(border_color)
+    
+    header_lines = []
     idx = state.selected_index
     tab = state.selected_tab
     
     if tab == "containers" and idx < len(state.containers):
         c = state.containers[idx]
-        info_lines.append(f"  ID:      {c.id[:12]}...")
-        info_lines.append(f"  Name:    {c.name}")
-        info_lines.append(f"  Status:  {c.status.upper()} (CPU: {c.cpu_percent}, RAM: {c.ram_usage})")
-        info_lines.append(f"  Image:   {c.image}")
-        info_lines.append(" " + "-" * (w - 4))
-        for log in state.logs:
-            info_lines.append(f"  {log}")
+        header_lines.append(f"  ID:      {c.id[:12]}...")
+        header_lines.append(f"  Name:    {c.name}")
+        header_lines.append(f"  Status:  {c.status.upper()} (CPU: {c.cpu_percent}, RAM: {c.ram_usage})")
+        header_lines.append(f"  Image:   {c.image}")
+        header_lines.append(" " + "-" * (w - 4))
+        # Logs handled separately
             
     elif tab == "images" and idx < len(state.images):
         img = state.images[idx]
-        info_lines.append(f"  ID:   {img.id}")
-        info_lines.append(f"  Tags: {img.tags}")
+        header_lines.append(f"  ID:   {img.id}")
+        header_lines.append(f"  Tags: {img.tags}")
         
     elif tab == "volumes" and idx < len(state.volumes):
         v = state.volumes[idx]
-        info_lines.append(f"  Name:  {v.name}")
-        info_lines.append(f"  Mount: {v.mountpoint}")
+        header_lines.append(f"  Name:  {v.name}")
+        header_lines.append(f"  Mount: {v.mountpoint}")
         
     elif tab == "networks" and idx < len(state.networks):
         n = state.networks[idx]
-        info_lines.append(f"  ID:     {n.id[:12]}...")
-        info_lines.append(f"  Name:   {n.name}")
-        info_lines.append(f"  Subnet: {n.subnet}")
+        header_lines.append(f"  ID:     {n.id[:12]}...")
+        header_lines.append(f"  Name:   {n.name}")
+        header_lines.append(f"  Subnet: {n.subnet}")
     
     elif tab == "compose" and idx < len(state.composes):
         c = state.composes[idx]
-        info_lines.append(f"  Project: {c.name}")
-        info_lines.append(f"  Status:  {c.status}")
-        info_lines.append(f"  Files:   {c.config_files}")
+        header_lines.append(f"  Project: {c.name}")
+        header_lines.append(f"  Status:  {c.status}")
+        header_lines.append(f"  Files:   {c.config_files}")
 
-    for i, line in enumerate(info_lines):
-        if i >= h - 2: break
-        win.addstr(1 + i, 1, line[:w-3])
+    # Draw Headers
+    current_y = 1
+    for line in header_lines:
+        if current_y >= h - 1: break
+        win.addstr(current_y, 1, line[:w-3])
+        current_y += 1
 
+    # Draw Logs (only for containers for now)
+    if tab == "containers" and current_y < h - 1:
+        available_lines = h - 1 - current_y
+        offset = state.logs_scroll_offset
+        
+        # If auto-following (at bottom), should we check?
+        # For now just respect offset.
+        
+        # Ensure offset is valid (state manager handles it, but just in case of race)
+        if offset >= len(state.logs): offset = max(0, len(state.logs) - available_lines)
+        
+        visible_logs = state.logs[offset : offset + available_lines]
+        
+        for i, log in enumerate(visible_logs):
+            if current_y + i >= h - 1: break
+            try:
+                # Truncate or wrap? Truncate for now to avoid mess
+                win.addstr(current_y + i, 1, f"  {log}"[:w-3])
+            except: pass
+            
     win.noutrefresh()
 
 def prompt_input(stdscr, cy, cx, prompt):
