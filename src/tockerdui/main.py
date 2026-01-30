@@ -63,22 +63,29 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                 return
                 
             if key == 's' and tab == "containers":
+                # Start all selected containers
                 for container_id in selected_ids:
                     backend.start_container(container_id)
                 state_mgr.set_message(f"Started {len(selected_ids)} containers")
                 action_taken = True
+                
             elif key == 't' and tab == "containers":
+                # Stop all selected containers
                 if ask_confirmation(stdscr, h//2, w//2, f"Stop {len(selected_ids)} containers?"):
                     for container_id in selected_ids:
                         backend.stop_container(container_id)
                     state_mgr.set_message(f"Stopped {len(selected_ids)} containers")
                     action_taken = True
+                    
             elif key == 'r' and tab == "containers":
+                # Restart all selected containers
                 for container_id in selected_ids:
                     backend.restart_container(container_id)
                 state_mgr.set_message(f"Restarted {len(selected_ids)} containers")
                 action_taken = True
+                
             elif key == 'd' and tab == "containers":
+                # Remove all selected containers
                 if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} containers?"):
                     for container_id in selected_ids:
                         backend.remove_container(container_id)
@@ -86,18 +93,36 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     action_taken = True
             
             elif key == 'd' and tab == "images":
+                # Remove all selected images
                 if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} images?"):
                     for image_id in selected_ids:
                         backend.remove_image(image_id)
                     state_mgr.set_message(f"Removed {len(selected_ids)} images")
                     action_taken = True
-            
+                    
             elif key == 'p' and tab == "images":
-                backend.prune_all()
-                state_mgr.set_message("Pruned unused Docker resources")
-                action_taken = True
+                # Prune unused Docker resources
+                if ask_confirmation(stdscr, h//2, w//2, "Prune unused Docker resources?"):
+                    curses.def_prog_mode()
+                    curses.endwin()
+                    try:
+                        print("Pruning Docker resources...")
+                        backend.prune_all()
+                        print("Done. Press Enter to continue.")
+                        input()
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        input()
+                    curses.reset_prog_mode()
+                    curses.curs_set(0)
+                    stdscr.nodelay(True)
+                    stdscr.clearok(True)
+                    stdscr.refresh()
+                    state_mgr.set_message("Pruned unused Docker resources")
+                    action_taken = True
                 
             elif key == 'd' and tab == "volumes":
+                # Remove all selected volumes
                 if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} volumes?"):
                     for volume_name in selected_ids:
                         backend.remove_volume(volume_name)
@@ -105,6 +130,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     action_taken = True
                     
             elif key == 'd' and tab == "networks":
+                # Remove all selected networks
                 if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} networks?"):
                     for network_id in selected_ids:
                         backend.remove_network(network_id)
@@ -112,12 +138,14 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     action_taken = True
                     
             elif key == 'U' and tab == "compose":
+                # Up all selected compose projects
                 for project_name in selected_ids:
                     backend.compose_up(project_name)
                 state_mgr.set_message(f"Started {len(selected_ids)} compose projects")
                 action_taken = True
                 
             elif key == 'D' and tab == "compose":
+                # Down all selected compose projects
                 if ask_confirmation(stdscr, h//2, w//2, f"Stop {len(selected_ids)} compose projects?"):
                     for project_name in selected_ids:
                         backend.compose_down(project_name)
@@ -125,10 +153,12 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     action_taken = True
                     
             elif key == 'r' and tab == "compose":
-                for project_name in selected_ids:
-                    backend.compose_remove(project_name)
-                state_mgr.set_message(f"Removed {len(selected_ids)} compose projects")
-                action_taken = True
+                # Remove all selected compose projects
+                if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} compose projects?"):
+                    for project_name in selected_ids:
+                        backend.compose_remove(project_name)
+                    state_mgr.set_message(f"Removed {len(selected_ids)} compose projects")
+                    action_taken = True
 
         # --- SINGLE ITEM ACTIONS ---
         else:
@@ -182,7 +212,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                 stdscr.nodelay(True)
                 stdscr.clearok(True)
                 stdscr.refresh()
-        
+         
         # --- COMMON ---
         elif key == 'i':
             curses.def_prog_mode()
@@ -208,25 +238,22 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                 action_taken = True
         elif key == 'P':
              if ask_confirmation(stdscr, h//2, w//2, "Prune system (all unused)?"):
-                 curses.def_prog_mode()
-                 curses.endwin()
-                 try: 
-                     print("Pruning system...")
-                     backend.prune_all()
-                     print("Done.")
-                     time.sleep(1)
-                 except: pass
-                 curses.reset_prog_mode()
-                 curses.curs_set(0)
-                 stdscr.nodelay(True)
-                 stdscr.clearok(True)
-                 stdscr.refresh()
-                 # Prune IS an action
-                 action_taken = True
-        
-        if action_taken:
-            list_worker.force_refresh()
-
+                  curses.def_prog_mode()
+                  curses.endwin()
+                  try: 
+                      print("Pruning system...")
+                      backend.prune_all()
+                      print("Done.")
+                      time.sleep(1)
+                  except: pass
+                  curses.reset_prog_mode()
+                  curses.curs_set(0)
+                  stdscr.nodelay(True)
+                  stdscr.clearok(True)
+                  stdscr.refresh()
+                  # Prune IS an action
+                  action_taken = True
+         
         # --- IMAGE ACTIONS ---
         elif key == 'p' and tab == "images":
             img_info = next((i for i in state.images if i.id == item_id), None)
@@ -237,7 +264,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     curses.endwin()
                     try:
                         subprocess.call(["docker", "pull", tag])
-                        print("\nPress Enter to return...")
+                        print("Press Enter to return...")
                         input()
                     except Exception: pass
                     curses.reset_prog_mode()
@@ -274,7 +301,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                  curses.endwin()
                  try:
                      subprocess.call(["docker", "build", "-t", tag, path])
-                     print("\nPress Enter to return...")
+                     print("Press Enter to return...")
                      input()
                  except Exception: pass
                  curses.reset_prog_mode()
@@ -282,11 +309,11 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                  stdscr.nodelay(True)
                  stdscr.clearok(True)
                  stdscr.refresh()
-
+ 
         elif key == 'C' and tab == "volumes":
             name = prompt_input(stdscr, h // 2, w // 2, "Volume Name: ")
             if name: backend.create_volume(name)
-        
+         
         # --- COMPOSE ACTIONS ---
         elif tab == "compose":
             if item_id:
@@ -378,7 +405,7 @@ def main(stdscr):
                              detail_win_h = h - split_y - 1
                              if detail_win_h > 0:
                                  detail_win = curses.newwin(detail_win_h, w, split_y, 0)
-                    
+                     
                     # Draw components
                     draw_header(stdscr, w, state.selected_tab)
                     draw_footer(stdscr, w, h, state)
@@ -388,10 +415,10 @@ def main(stdscr):
                     
                     curses.doupdate()
                     last_version = current_version
-                    force_redraw = False
+                    force_redraw = False 
 
                 key = stdscr.getch()
-                if key == curses.ERR: continue
+                if key == curses.ERR: continue 
 
                 if key == ord('q') and not state.is_filtering:
                     logging.info("Quitting")
@@ -547,7 +574,7 @@ def main(stdscr):
                 item_id = state_mgr.get_selected_item_id()
                 if item_id:
                      handle_action(chr(key) if 32 <= key <= 126 else key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
-            
+             
             except KeyboardInterrupt:
                 logging.info("KeyboardInterrupt caught, exiting...")
                 break
@@ -555,7 +582,7 @@ def main(stdscr):
                 logging.error(f"Error in main loop: {e}")
                 state_mgr.set_message(f"Error: {e}")
                 time.sleep(1) # Prevent tight loop on error
-
+    
     except Exception as e:
          logging.critical(f"Critical error: {e}")
     finally:
