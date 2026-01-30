@@ -189,7 +189,7 @@ class StateManager:
                 elif self._state.selected_tab == "compose": return item.name
         return None
 
-class BackgroundWorker(threading.Thread):
+class ResourceWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):
         super().__init__(daemon=True)
         self.state_manager = state_manager
@@ -204,7 +204,7 @@ class BackgroundWorker(threading.Thread):
 
         while self.running:
             try:
-                # Loop interval 0.2s
+                # Interval 0.2s
                 
                 # 1.0s interval for containers (5 ticks)
                 if counter % 5 == 0:
@@ -218,27 +218,46 @@ class BackgroundWorker(threading.Thread):
                     self.state_manager.update_networks(self.backend.get_networks())
                     self.state_manager.update_composes(self.backend.get_composes())
                 
-                # 2.0s interval for stats (10 ticks)
-                if counter % 10 == 0:
-                     snapshot = self.state_manager.get_snapshot()
-                     for c in snapshot.containers:
-                        if c.status == "running":
-                            cpu, ram = self.backend.get_container_stats(c.id)
-                            self.state_manager.update_container_stats(c.id, cpu, ram)
-                
-                # Always valid logs for selected container (every 0.2s check)
-                # But fetch logs maybe every 0.6s (3 ticks) to avoid hammering
-                if counter % 3 == 0:
+                # Logs fetch: every 0.4s (2 ticks) - High Priority
+                if counter % 2 == 0:
                     snapshot = self.state_manager.get_snapshot()
                     if snapshot.selected_tab == "containers":
                         cid = self.state_manager.get_selected_item_id()
                         if cid:
-                            # 20 lines is good for "tail" view
                             logs = self.backend.get_logs(cid, tail=20)
                             self.state_manager.set_logs(logs)
-                
+
             except Exception:
                 pass
             
             counter += 1
             time.sleep(0.2)
+
+class StatsWorker(threading.Thread):
+    def __init__(self, state_manager: StateManager, backend: DockerBackend):
+        super().__init__(daemon=True)
+        self.state_manager = state_manager
+        self.backend = backend
+        self.running = True
+
+    def run(self):
+        # Slower loop, independent of UI/Resources
+        while self.running:
+            try:
+                snapshot = self.state_manager.get_snapshot()
+                running_containers = [c for c in snapshot.containers if c.status == "running"]
+                
+                for c in running_containers:
+                    if not self.running: break
+                    try:
+                        cpu, ram = self.backend.get_container_stats(c.id)
+                        self.state_manager.update_container_stats(c.id, cpu, ram)
+                    except: pass
+                    # Sleep slightly between stats to yield CPU? Not strictly necessary if GIL released by I/O
+                    # but good practice to avoid lock contention
+                    time.sleep(0.1) 
+                
+                # If no containers or after loop, sleep a bit
+                time.sleep(2.0)
+            except Exception:
+                time.sleep(1.0)

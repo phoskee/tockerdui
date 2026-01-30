@@ -9,8 +9,8 @@ logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 from .backend import DockerBackend
-from .state import StateManager, BackgroundWorker
-from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu
+from .state import StateManager, ResourceWorker, StatsWorker
+from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal
 
 def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
     try:
@@ -177,9 +177,14 @@ def main(stdscr):
         
         backend = DockerBackend()
         state_mgr = StateManager()
-        worker = BackgroundWorker(state_mgr, backend)
-        worker.start()
-        logging.info("Backend and Worker initialized")
+        
+        resource_worker = ResourceWorker(state_mgr, backend)
+        stats_worker = StatsWorker(state_mgr, backend)
+        
+        resource_worker.start()
+        stats_worker.start()
+        
+        logging.info("Backend and Workers initialized")
 
         list_win = None
         detail_win = None
@@ -249,7 +254,8 @@ def main(stdscr):
 
                 if key == ord('q'):
                     logging.info("Quitting")
-                    worker.running = False
+                    resource_worker.running = False
+                    stats_worker.running = False
                     break
                 elif key == ord('1'): state_mgr.set_tab("containers")
                 elif key == ord('2'): state_mgr.set_tab("images")

@@ -23,10 +23,15 @@ def test_main_loop_init(mocker):
     mocker.patch('curses.newwin', return_value=msg_win_mock)
 
     # Mock Backend to avoid real docker calls
+    mocker.patch('curses.newwin', return_value=msg_win_mock)
+
+    # Mock Backend to avoid real docker calls
     mocker.patch('tockerdui.backend.DockerBackend')
-    # Mock BackgroundWorker to avoid threading issues
-    mock_worker = MagicMock()
-    mocker.patch('tockerdui.main.BackgroundWorker', return_value=mock_worker)
+    # Mock Workers to avoid threading issues
+    mock_res_worker = MagicMock()
+    mocker.patch('tockerdui.main.ResourceWorker', return_value=mock_res_worker)
+    mock_stat_worker = MagicMock()
+    mocker.patch('tockerdui.main.StatsWorker', return_value=mock_stat_worker)
 
     # Run main
     app_main.main(mock_stdscr)
