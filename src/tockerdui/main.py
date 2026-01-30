@@ -411,12 +411,12 @@ def main(stdscr):
                         stdscr.clearok(True)
                         stdscr.refresh()
                         if action_key:
-                            handle_action(action_key, state.selected_tab, item_id, backend, stdscr, state_mgr, state)
+                            handle_action(action_key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
                 
                 else:
                     item_id = state_mgr.get_selected_item_id()
                     if state.selected_tab == "images" and (key == ord('B') or key == ord('L')):
-                        handle_action(chr(key), state.selected_tab, None, backend, stdscr, state_mgr, state)
+                        handle_action(chr(key), state.selected_tab, None, backend, stdscr, state_mgr, state, list_worker)
                         continue
                     
                     # Dispatch Actions
