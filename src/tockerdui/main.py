@@ -191,6 +191,7 @@ def main(stdscr):
         list_win = None
         detail_win = None
         last_version = -1
+        last_h, last_w = -1, -1
         force_redraw = True
 
         while True:
