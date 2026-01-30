@@ -104,18 +104,35 @@ def draw_footer(stdscr, width, height, state: AppState):
         help_txt = "| Enter: Menu | P: Prune | q: Quit | ?: Help "
         
         # Draw Focus info
-        stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))
-        x_pos = len(sort_info)
-        stdscr.addstr(bar_y, x_pos, focus_txt, curses.color_pair(4) | curses.A_BOLD)
-        x_pos += len(focus_txt)
-        stdscr.addstr(bar_y, x_pos, help_txt, curses.A_DIM)
+        try:
+            if width > len(sort_info):
+                stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))
+            x_pos = len(sort_info)
+            
+            if width > x_pos + len(focus_txt):
+                stdscr.addstr(bar_y, x_pos, focus_txt, curses.color_pair(4) | curses.A_BOLD)
+            x_pos += len(focus_txt)
+
+            # Truncate help text if needed
+            remaining_w = width - x_pos - 1
+            if remaining_w > 5:
+                # Reserve space for usage if possible
+                usage_w = 20 # approx
+                avail_w = remaining_w
+                if state.self_usage: avail_w -= usage_w
+                
+                if avail_w > 5:
+                    stdscr.addstr(bar_y, x_pos, help_txt[:avail_w], curses.A_DIM)
+        except: pass
         
         # Draw Self Usage (Right aligned)
-        if state.self_usage:
-            usage_txt = f" [{state.self_usage}] "
-            u_x = width - len(usage_txt) - 1
-            if u_x > x_pos + len(help_txt):
-                stdscr.addstr(bar_y, u_x, usage_txt, curses.color_pair(6) | curses.A_BOLD)
+        try:
+            if state.self_usage:
+                usage_txt = f" [{state.self_usage}] "
+                u_x = width - len(usage_txt) - 1
+                if u_x > x_pos + 5: # Ensure at least some gap
+                    stdscr.addstr(bar_y, u_x, usage_txt, curses.color_pair(6) | curses.A_BOLD)
+        except: pass
     
     stdscr.noutrefresh()
 
@@ -131,97 +148,99 @@ def draw_list(win, state: AppState):
     # Base padding: 2 (start) + 1 (gap) * N = ~6 chars reserved for structure
     # Define widths map: {tab: (header_str, item_formatter_func)}
     
-    if tab == "containers":
-        title, items = " Containers ", state.containers
-        # Fixed cols: 
-        # Project: 12, Status: 10, CPU: 7, Mem: 10 => Total Fixed ~40
-        # Dynamic: Name, Image
-        
-        fixed_width = 12 + 10 + 7 + 10 + 6 # +6 for spaces/bullet
-        rem_width = max(10, w - fixed_width)
-        
-        # Allocate 35% to Name, remainder to Image, but keep min 20 for name
-        w_name = max(20, int(rem_width * 0.35))
-        w_image = max(10, rem_width - w_name - 1)
-        
-        header = f"  {'PROJECT':<12} {'NAME':<{w_name}} {'STATUS':<10} {'CPU':<7} {'MEM':<10} {'IMAGE'}"
-        
-    elif tab == "images":
-        title, items = " Images ", state.images
-        w_id = 15
-        w_size = 10
-        w_created = 15
-        fixed = w_id + w_size + w_created + 5
-        w_tags = max(10, w - fixed)
-        header = f"  {'SHORT ID':<{w_id}} {'SIZE (MB)':<{w_size}} {'CREATED':<{w_created}} {'TAGS'}"
-        
-    elif tab == "volumes":
-        title, items = " Volumes ", state.volumes
-        w_driver = 10
-        rem_w = max(20, w - w_driver - 5)
-        w_name = max(20, int(rem_w * 0.4))
-        # w_mount = rem_w - w_name
-        header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'MOUNT'}"
-        
-    elif tab == "networks":
-        title, items = " Networks ", state.networks
-        w_driver = 10
-        rem_w = max(20, w - w_driver - 5)
-        w_name = max(20, int(rem_w * 0.4))
-        header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'SUBNET'}"
-        
-    else: # compose
-        title, items = " Compose Projects ", state.composes
-        w_status = 15
-        rem_w = max(20, w - w_status - 5)
-        w_name = max(20, int(rem_w * 0.4))
-        header = f"  {'NAME':<{w_name}} {'STATUS':<{w_status}} {'CONFIG FILES'}"
-
-    # Filtered title
-    if state.filter_text:
-        title += f" (Matches: '{state.filter_text}') "
-
-    win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
-    win.addstr(1, 1, header[:w-2], curses.color_pair(5) | curses.A_BOLD)
-
-    start_y = 2
-    max_items = h - 3
-    offset = state.scroll_offset
-    visible_items = items[offset : offset + max_items]
-    
-    for i, item in enumerate(visible_items):
-        actual_index = offset + i
-        is_selected = (actual_index == state.selected_index)
-        
-        row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
-        
+    try:
         if tab == "containers":
-            # Simple bullet
-            status_char = "*" 
-            if item.status == "running": s_color = curses.color_pair(2)
-            elif item.status == "paused": s_color = curses.color_pair(6)
-            else: s_color = curses.color_pair(3)
+            title, items = " Containers ", state.containers
+            # Fixed cols: 
+            # Project: 12, Status: 10, CPU: 7, Mem: 10 => Total Fixed ~40
+            # Dynamic: Name, Image
             
-            win.addstr(start_y + i, 1, f" {status_char} ", s_color | (curses.A_REVERSE if is_selected else 0))
+            fixed_width = 12 + 10 + 7 + 10 + 6 # +6 for spaces/bullet
+            rem_width = max(10, w - fixed_width)
             
-            # Use dynamic widths calculated above
-            name_str = item.name[:w_name-1]
-            img_str = item.image[:w_image-1] if 'w_image' in locals() else item.image
+            # Allocate 35% to Name, remainder to Image, but keep min 20 for name
+            w_name = max(20, int(rem_width * 0.35))
+            w_image = max(10, rem_width - w_name - 1)
             
-            row_txt = f"{item.project[:11]:<12} {name_str:<{w_name}} {item.status[:9]:<10} {item.cpu_percent:<7} {item.ram_usage:<10} {img_str}"
-            win.addstr(start_y + i, 5, row_txt[:w-6], row_style)
-        else:
-            if tab == "images":
-                line = f"  {item.short_id:<15} {item.size_mb:<10.1f} {item.created:<15} {str(item.tags)[:w_tags]}"
-            elif tab == "volumes":
-                line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.mountpoint}"
-            elif tab == "networks":
-                line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.subnet}"
-            else: # compose
-                line = f"  {item.name[:w_name-1]:<{w_name}} {item.status:<15} {item.config_files}"
+            header = f"  {'PROJECT':<12} {'NAME':<{w_name}} {'STATUS':<10} {'CPU':<7} {'MEM':<10} {'IMAGE'}"
             
-            win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
+        elif tab == "images":
+            title, items = " Images ", state.images
+            w_id = 15
+            w_size = 10
+            w_created = 15
+            fixed = w_id + w_size + w_created + 5
+            w_tags = max(10, w - fixed)
+            header = f"  {'SHORT ID':<{w_id}} {'SIZE (MB)':<{w_size}} {'CREATED':<{w_created}} {'TAGS'}"
+            
+        elif tab == "volumes":
+            title, items = " Volumes ", state.volumes
+            w_driver = 10
+            rem_w = max(20, w - w_driver - 5)
+            w_name = max(20, int(rem_w * 0.4))
+            # w_mount = rem_w - w_name
+            header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'MOUNT'}"
+            
+        elif tab == "networks":
+            title, items = " Networks ", state.networks
+            w_driver = 10
+            rem_w = max(20, w - w_driver - 5)
+            w_name = max(20, int(rem_w * 0.4))
+            header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'SUBNET'}"
+            
+        else: # compose
+            title, items = " Compose Projects ", state.composes
+            w_status = 15
+            rem_w = max(20, w - w_status - 5)
+            w_name = max(20, int(rem_w * 0.4))
+            header = f"  {'NAME':<{w_name}} {'STATUS':<{w_status}} {'CONFIG FILES'}"
 
+        # Filtered title
+        if state.filter_text:
+            title += f" (Matches: '{state.filter_text}') "
+
+        win.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(4))
+        win.addstr(1, 1, header[:w-2], curses.color_pair(5) | curses.A_BOLD)
+
+        start_y = 2
+        max_items = h - 3
+        offset = state.scroll_offset
+        visible_items = items[offset : offset + max_items]
+        
+        for i, item in enumerate(visible_items):
+            actual_index = offset + i
+            is_selected = (actual_index == state.selected_index)
+            
+            row_style = curses.color_pair(7) if is_selected else curses.A_NORMAL
+            
+            if tab == "containers":
+                # Simple bullet
+                status_char = "*" 
+                if item.status == "running": s_color = curses.color_pair(2)
+                elif item.status == "paused": s_color = curses.color_pair(6)
+                else: s_color = curses.color_pair(3)
+                
+                win.addstr(start_y + i, 1, f" {status_char} ", s_color | (curses.A_REVERSE if is_selected else 0))
+                
+                # Use dynamic widths calculated above
+                name_str = item.name[:w_name-1]
+                img_str = item.image[:w_image-1] if 'w_image' in locals() else item.image
+                
+                row_txt = f"{item.project[:11]:<12} {name_str:<{w_name}} {item.status[:9]:<10} {item.cpu_percent:<7} {item.ram_usage:<10} {img_str}"
+                win.addstr(start_y + i, 5, row_txt[:w-6], row_style)
+            else:
+                if tab == "images":
+                    line = f"  {item.short_id:<15} {item.size_mb:<10.1f} {item.created:<15} {str(item.tags)[:w_tags]}"
+                elif tab == "volumes":
+                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.mountpoint}"
+                elif tab == "networks":
+                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.subnet}"
+                else: # compose
+                    line = f"  {item.name[:w_name-1]:<{w_name}} {item.status:<15} {item.config_files}"
+                
+                win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
+    except: pass
+    
     win.noutrefresh()
 
 
@@ -275,31 +294,33 @@ def draw_details(win, state: AppState):
         header_lines.append(f"  Files:   {c.config_files}")
 
     # Draw Headers
-    current_y = 1
-    for line in header_lines:
-        if current_y >= h - 1: break
-        win.addstr(current_y, 1, line[:w-3])
-        current_y += 1
+    try:
+        current_y = 1
+        for line in header_lines:
+            if current_y >= h - 1: break
+            win.addstr(current_y, 1, line[:w-3])
+            current_y += 1
 
-    # Draw Logs (only for containers for now)
-    if tab == "containers" and current_y < h - 1:
-        available_lines = h - 1 - current_y
-        offset = state.logs_scroll_offset
-        
-        # If auto-following (at bottom), should we check?
-        # For now just respect offset.
-        
-        # Ensure offset is valid (state manager handles it, but just in case of race)
-        if offset >= len(state.logs): offset = max(0, len(state.logs) - available_lines)
-        
-        visible_logs = state.logs[offset : offset + available_lines]
-        
-        for i, log in enumerate(visible_logs):
-            if current_y + i >= h - 1: break
-            try:
-                # Truncate or wrap? Truncate for now to avoid mess
-                win.addstr(current_y + i, 1, f"  {log}"[:w-3])
-            except: pass
+        # Draw Logs (only for containers for now)
+        if tab == "containers" and current_y < h - 1:
+            available_lines = h - 1 - current_y
+            offset = state.logs_scroll_offset
+            
+            # If auto-following (at bottom), should we check?
+            # For now just respect offset.
+            
+            # Ensure offset is valid (state manager handles it, but just in case of race)
+            if offset >= len(state.logs): offset = max(0, len(state.logs) - available_lines)
+            
+            visible_logs = state.logs[offset : offset + available_lines]
+            
+            for i, log in enumerate(visible_logs):
+                if current_y + i >= h - 1: break
+                try:
+                    # Truncate or wrap? Truncate for now to avoid mess
+                    win.addstr(current_y + i, 1, f"  {log}"[:w-3])
+                except: pass
+    except: pass
             
     win.noutrefresh()
 

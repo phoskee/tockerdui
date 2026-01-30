@@ -303,6 +303,10 @@ class ListWorker(threading.Thread):
         self.state_manager = state_manager
         self.backend = backend
         self.running = True
+        self._force_refresh_flag = False
+    
+    def force_refresh(self):
+        self._force_refresh_flag = True
 
     def run(self):
         counter = 0
@@ -312,6 +316,11 @@ class ListWorker(threading.Thread):
 
         while self.running:
             try:
+                # Force refresh logic
+                if self._force_refresh_flag:
+                    counter = 0
+                    self._force_refresh_flag = False
+                
                 # Interval 0.5s
                 
                 # 2 loops = 1.0s interval for containers (approx)

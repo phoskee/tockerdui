@@ -42,19 +42,23 @@ from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
 from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
 
-def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
+def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state, list_worker):
     try:
         h, w = stdscr.getmaxyx()
         logging.debug(f"Handling action {key} for tab {tab}")
+        action_taken = False
         
         # --- CONTAINER ACTIONS ---
         if key == 's' and tab == "containers":
             backend.start_container(item_id)
+            action_taken = True
         elif key == 't' and tab == "containers":
             if ask_confirmation(stdscr, h//2, w//2, "Stop container?"):
                  backend.stop_container(item_id)
+                 action_taken = True
         elif key == 'r' and tab == "containers":
             backend.restart_container(item_id)
+            action_taken = True
         elif key == 'z' and tab == "containers":
             c_info = next((c for c in state.containers if c.id == item_id), None)
             if c_info:
@@ -118,6 +122,7 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
                 elif tab == "images": backend.remove_image(item_id)
                 elif tab == "volumes": backend.remove_volume(item_id)
                 elif tab == "networks": backend.remove_network(item_id)
+                action_taken = True
         elif key == 'P':
              if ask_confirmation(stdscr, h//2, w//2, "Prune system (all unused)?"):
                  curses.def_prog_mode()
@@ -133,6 +138,11 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
                  stdscr.nodelay(True)
                  stdscr.clearok(True)
                  stdscr.refresh()
+                 # Prune IS an action
+                 action_taken = True
+        
+        if action_taken:
+            list_worker.force_refresh()
 
         # --- IMAGE ACTIONS ---
         elif key == 'p' and tab == "images":
@@ -409,21 +419,34 @@ def main(stdscr):
                         handle_action(chr(key), state.selected_tab, None, backend, stdscr, state_mgr, state)
                         continue
                     
-                    if item_id:
-                        try:
-                            # Only handle alphanumeric actions if it's a valid char
-                            if 32 <= key <= 126:
-                                handle_action(chr(key), state.selected_tab, item_id, backend, stdscr, state_mgr, state)
-                        except: pass
-
-            except StopIteration:
+                    # Dispatch Actions
+                item_id = state_mgr.get_selected_item_id()
+                if item_id:
+                     handle_action(chr(key) if 32 <= key <= 126 else key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
+            
+            except KeyboardInterrupt:
+                logging.info("KeyboardInterrupt caught, exiting...")
                 break
             except Exception as e:
-                logging.error(f"Error in main loop: {e}", exc_info=True)
+                logging.error(f"Error in main loop: {e}")
+                state_mgr.set_message(f"Error: {e}")
                 time.sleep(1) # Prevent tight loop on error
 
     except Exception as e:
-        logging.critical(f"Critical error in main: {e}", exc_info=True)
+         logging.critical(f"Critical error: {e}")
+    finally:
+         list_worker.running = False
+         logs_worker.running = False
+         stats_worker.running = False
 
 if __name__ == "__main__":
-    curses.wrapper(main)
+    import os
+    try:
+        if os.environ.get("TOCKERDUI_TEST"):
+             print("Test mode")
+        else:
+             curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"Crash: {e}")
