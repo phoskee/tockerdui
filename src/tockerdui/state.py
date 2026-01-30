@@ -224,7 +224,7 @@ class StateManager:
                 elif self._state.selected_tab == "compose": return item.name
         return None
 
-class ResourceWorker(threading.Thread):
+class ListWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):
         super().__init__(daemon=True)
         self.state_manager = state_manager
@@ -239,34 +239,48 @@ class ResourceWorker(threading.Thread):
 
         while self.running:
             try:
-                # Interval 0.2s
+                # Interval 0.5s
                 
-                # 1.0s interval for containers (5 ticks)
-                if counter % 5 == 0:
+                # 2 loops = 1.0s interval for containers (approx)
+                if counter % 2 == 0:
                     containers = self.backend.get_containers()
                     self.state_manager.update_containers(containers)
                 
-                # 5.0s interval for others (25 ticks)
-                if counter % 25 == 0:
+                # 10 loops = 5.0s interval for others
+                if counter % 10 == 0:
                     self.state_manager.update_images(self.backend.get_images())
                     self.state_manager.update_volumes(self.backend.get_volumes())
                     self.state_manager.update_networks(self.backend.get_networks())
                     self.state_manager.update_composes(self.backend.get_composes())
-                
-                # Logs fetch: every 0.4s (2 ticks) - High Priority
-                if counter % 2 == 0:
-                    snapshot = self.state_manager.get_snapshot()
-                    if snapshot.selected_tab == "containers":
-                        cid = self.state_manager.get_selected_item_id()
-                        if cid:
-                            logs = self.backend.get_logs(cid, tail=20)
-                            self.state_manager.set_logs(logs)
-
             except Exception:
                 pass
             
             counter += 1
-            time.sleep(0.2)
+            time.sleep(0.5)
+
+class LogsWorker(threading.Thread):
+    def __init__(self, state_manager: StateManager, backend: DockerBackend):
+        super().__init__(daemon=True)
+        self.state_manager = state_manager
+        self.backend = backend
+        self.running = True
+
+    def run(self):
+        while self.running:
+            try:
+                snapshot = self.state_manager.get_snapshot()
+                if snapshot.selected_tab == "containers" and snapshot.focused_pane == "details":
+                    # Only fetch if we are looking at them? 
+                    # Or always fetch if tab is containers?
+                    # Better always fetch if tab=containers so they are ready when we focus.
+                    cid = self.state_manager.get_selected_item_id()
+                    if cid:
+                        logs = self.backend.get_logs(cid, tail=200) # Fetch more lines
+                        self.state_manager.set_logs(logs)
+                
+                time.sleep(0.5) # Smooth enough
+            except Exception:
+                time.sleep(1.0)
 
 class StatsWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):

@@ -56,9 +56,15 @@ def draw_footer(stdscr, width, height, state: AppState):
         # Sort Indicator
         sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
         # Shortcut bar
-        help_txt = " Enter: Menu | 1-5: Tabs | /: Filter | S: Sort | P: Prune | q: Quit "
+        focus_txt = f" TAB: Focus ({state.focused_pane.upper()}) "
+        help_txt = "| Enter: Menu | 1-5: Tabs | /: Filter | q: Quit "
+        
+        # Draw Focus info
         stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))
-        stdscr.addstr(bar_y, len(sort_info), help_txt, curses.A_DIM)
+        x_pos = len(sort_info)
+        stdscr.addstr(bar_y, x_pos, focus_txt, curses.color_pair(4) | curses.A_BOLD)
+        x_pos += len(focus_txt)
+        stdscr.addstr(bar_y, x_pos, help_txt, curses.A_DIM)
     
     stdscr.noutrefresh()
 

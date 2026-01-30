@@ -9,7 +9,7 @@ logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 from .backend import DockerBackend
-from .state import StateManager, ResourceWorker, StatsWorker
+from .state import StateManager, ListWorker, LogsWorker, StatsWorker
 from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal
 
 def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
@@ -178,10 +178,12 @@ def main(stdscr):
         backend = DockerBackend()
         state_mgr = StateManager()
         
-        resource_worker = ResourceWorker(state_mgr, backend)
+        list_worker = ListWorker(state_mgr, backend)
+        logs_worker = LogsWorker(state_mgr, backend)
         stats_worker = StatsWorker(state_mgr, backend)
         
-        resource_worker.start()
+        list_worker.start()
+        logs_worker.start()
         stats_worker.start()
         
         logging.info("Backend and Workers initialized")
@@ -228,7 +230,8 @@ def main(stdscr):
                 # Global/High Priority Keys
                 if key == ord('q') and not state.is_filtering:
                     logging.info("Quitting")
-                    resource_worker.running = False
+                    list_worker.running = False
+                    logs_worker.running = False
                     stats_worker.running = False
                     break
                 
@@ -264,11 +267,6 @@ def main(stdscr):
                          state_mgr.set_update_available(False)
                      continue
 
-                if key == ord('q'):
-                    logging.info("Quitting")
-                    resource_worker.running = False
-                    stats_worker.running = False
-                    break
                 elif key == ord('1'): state_mgr.set_tab("containers")
                 elif key == ord('2'): state_mgr.set_tab("images")
                 elif key == ord('3'): state_mgr.set_tab("volumes")

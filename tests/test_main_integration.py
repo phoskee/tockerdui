@@ -28,8 +28,10 @@ def test_main_loop_init(mocker):
     # Mock Backend to avoid real docker calls
     mocker.patch('tockerdui.backend.DockerBackend')
     # Mock Workers to avoid threading issues
-    mock_res_worker = MagicMock()
-    mocker.patch('tockerdui.main.ResourceWorker', return_value=mock_res_worker)
+    mock_list_worker = MagicMock()
+    mocker.patch('tockerdui.main.ListWorker', return_value=mock_list_worker)
+    mock_logs_worker = MagicMock()
+    mocker.patch('tockerdui.main.LogsWorker', return_value=mock_logs_worker)
     mock_stat_worker = MagicMock()
     mocker.patch('tockerdui.main.StatsWorker', return_value=mock_stat_worker)
 
