@@ -64,9 +64,32 @@ echo "📥 Installing dependencies (this may take a minute)...
 "$INSTALL_DIR"/venv/bin/pip" install --upgrade pip --quiet
 "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/tockerdui/requirements.txt" --quiet
 
+# Save source path for updates
+echo "$PWD" > "$INSTALL_DIR/source_path"
+cp uninstall.sh "$INSTALL_DIR/"
+
 echo "🚀 Creating global launcher..."
 cat <<EOF > "$BIN_DIR/tockerdui"
 #!/bin/bash
+
+# Handle CLI commands
+if [ "\$1" == "update" ]; then
+    SOURCE_PATH=\$(cat "$INSTALL_DIR/source_path")
+    if [ -d "\$SOURCE_PATH" ]; then
+        echo "🔄 Switching to source directory: \$SOURCE_PATH"
+        cd "\$SOURCE_PATH" && ./update.sh
+    else
+        echo "❌ Source directory not found: \$SOURCE_PATH"
+        echo "Unable to update automatically via git."
+        exit 1
+    fi
+    exit 0
+elif [ "\$1" == "uninstall" ]; then
+    bash "$INSTALL_DIR/uninstall.sh"
+    exit 0
+fi
+
+# Run Application
 export PYTHONPATH="$INSTALL_DIR"
 "$INSTALL_DIR/venv/bin/python3" -m tockerdui.main "\$@"
 EOF
@@ -77,12 +100,15 @@ echo ""
 echo "✨ ✅ Installation Successful! ✨"
 echo "------------------------------------------------"
 echo "You can now launch the app from anywhere with: tockerdui"
+echo "Available commands:"
+echo "  tockerdui           - Run the application"
+echo "  tockerdui update    - Pull changes and update"
+echo "  tockerdui uninstall - Remove the application"
 
-
-if [[ ":$PATH:" != ":$BIN_DIR:" ]]
-    then
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    echo ""
     echo "⚠️  Note: $BIN_DIR is not in your PATH."
     echo "Add this line to your ~/.bashrc or ~/.zshrc:"
-    echo "  export PATH=\"$$HOME/.local/bin:$PATH\""
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 echo "------------------------------------------------"
