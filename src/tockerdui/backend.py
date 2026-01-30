@@ -249,6 +249,9 @@ class DockerBackend:
     def check_for_updates(self) -> bool:
         try:
             source_path = self._get_source_path()
+            with open("/tmp/tockerdui_debug.log", "a") as f:
+                 f.write(f"Source path: {source_path}\n")
+            
             if not source_path: return False
             
             # Fetch remote
@@ -261,9 +264,14 @@ class DockerBackend:
                 cwd=source_path
             )
             count = int(output.decode('utf-8').strip())
+            
+            with open("/tmp/tockerdui_debug.log", "a") as f:
+                 f.write(f"Git count: {count}\n")
+            
             return count > 0
-        except Exception:
-            # logging.error(f"Update check failed: {e}")
+        except Exception as e:
+            with open("/tmp/tockerdui_debug.log", "a") as f:
+                 f.write(f"Update check error: {e}\n")
             return False
 
     def perform_update(self):
