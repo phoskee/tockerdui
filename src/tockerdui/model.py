@@ -92,3 +92,5 @@ class AppState:
     focused_pane: str = "list" # "list" or "details"
     logs_scroll_offset: int = 0
     self_usage: str = ""
+    last_error: str = ""  # Error message to display
+    error_timestamp: float = 0.0  # Time when error was set (for auto-clear after 3s)

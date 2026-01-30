@@ -2,7 +2,7 @@
 
 **Last Updated:** 30 Gennaio 2026  
 **Total Effort:** 45-57 hours (4 sprints)  
-**Current Status:** ✅ SPRINT 1 COMPLETATO + Sprint 2 In Progress (Task 2.1/7 done)
+**Current Status:** ✅ SPRINT 1 COMPLETATO + Sprint 2 In Progress (Task 2.4/7 done)
 
 ---
 
@@ -82,8 +82,8 @@
   - **Impatto:** Errori visibili, facilita debug
   - **Severity:** 🟠 ALTA
 
-- [ ] **2.2** - Aggiungere error footer in UI (1h 30 min)
-  - **File:** `src/tockerdui/ui.py`, `src/tockerdui/state.py`
+- [x] **2.2** - Aggiungere error footer in UI (1h 30 min) ✅
+  - **File:** `src/tockerdui/ui.py`, `src/tockerdui/state.py`, `src/tockerdui/model.py`, `src/tockerdui/main.py`
   - **Descrizione:**
     - Aggiungere `state.last_error` con timestamp
     - Aggiungere `draw_error_footer()` che visualizza in RED se error < 3s
@@ -91,19 +91,21 @@
   - **Impatto:** UX migliorata, utente sa cosa è fallito
   - **Severity:** 🟠 ALTA
 
-- [ ] **2.3** - Fix race condition update modal (30 min)
-  - **File:** `src/tockerdui/main.py:276-280`
+- [x] **2.3** - Fix race condition update modal (30 min) ✅
+  - **File:** `src/tockerdui/main.py`, `src/tockerdui/state.py`
   - **Descrizione:**
     - Usare `with state.lock:` attorno modal per impedire aggiornamenti concorrenti
-    - Oppure async-safe mechanism per modal
-  - **Impatto:** Crash durante update check
+    - Cambiato `Lock()` a `RLock()` per reentrant locking
+    - Aggiunti metodi `acquire_lock()` e `release_lock()`
+  - **Impatto:** Crash durante update check eliminato
   - **Severity:** 🟠 ALTA
 
-- [ ] **2.4** - Aggiungere type hints a funzioni critiche (1h)
+- [x] **2.4** - Aggiungere type hints a funzioni critiche (1h) ✅
   - **File:** `src/tockerdui/main.py`, `src/tockerdui/backend.py`, `src/tockerdui/state.py`
   - **Descrizione:**
-    - Aggiungere type hints a `handle_action()`, `get_containers()`, `ListWorker`, `StatsWorker`
-    - Usare `typing` module per complex types
+    - Aggiungere type hints a `handle_action()` con forward references
+    - Type hints a `ListWorker.run()`, `StatsWorker.run()`, `LogsWorker.run()`
+    - Type hints a `StateManager` metodi critici
   - **Impatto:** IDE support, fewer runtime errors
   - **Severity:** 🟡 MEDIA
 

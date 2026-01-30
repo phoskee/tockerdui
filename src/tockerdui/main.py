@@ -27,6 +27,7 @@ Thread Safety:
   - No curses calls from worker threads (only in main thread)
 """
 
+from typing import Optional, Any
 import curses
 import time
 import subprocess
@@ -40,9 +41,11 @@ logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG,
 
 from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
-from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
+from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, draw_error_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
 
-def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state, list_worker):
+def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBackend', 
+                 stdscr: 'curses._CursesWindow', state_mgr: 'StateManager', 
+                 state: 'AppState', list_worker: 'ListWorker') -> None:
     try:
         h, w = stdscr.getmaxyx()
         logging.debug(f"Handling action {key} for tab {tab}")
@@ -206,21 +209,23 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state, list_wor
         
         # --- COMPOSE ACTIONS ---
         elif tab == "compose":
-            curses.def_prog_mode()
-            curses.endwin()
-            try:
-                if key == 'U': subprocess.call(["docker", "compose", "-p", item_id, "up", "-d"])
-                elif key == 'D': subprocess.call(["docker", "compose", "-p", item_id, "down"])
-                elif key == 'r': subprocess.call(["docker", "compose", "-p", item_id, "restart"])
-                elif key == 'P': subprocess.call(["docker", "compose", "-p", item_id, "pull"])
-                print("\nPress Enter to return...")
-                input()
-            except Exception: pass
-            curses.reset_prog_mode()
-            curses.curs_set(0)
-            stdscr.nodelay(True)
-            stdscr.clearok(True)
-            stdscr.refresh()
+            if item_id:
+                try:
+                    if key == 'U':
+                        backend.compose_up(item_id)
+                        state_mgr.set_message(f"Compose project '{item_id}' is starting...")
+                    elif key == 'D':
+                        backend.compose_down(item_id)
+                        state_mgr.set_message(f"Compose project '{item_id}' is stopping...")
+                    elif key == 'R':
+                        backend.compose_remove(item_id)
+                        state_mgr.set_message(f"Compose project '{item_id}' has been removed...")
+                    elif key == 'P':
+                        backend.compose_pause(item_id)
+                        state_mgr.set_message(f"Compose project '{item_id}' is pausing...")
+                except Exception as e:
+                    state_mgr.set_error(f"Compose action failed: {str(e)}")
+                    logging.error(f"Compose action error: {e}", exc_info=True)
     except Exception as e:
         logging.error(f"Error in handle_action: {e}", exc_info=True)
         state_mgr.set_message(f"Error: {str(e)}")
@@ -296,6 +301,7 @@ def main(stdscr):
                     # Draw components
                     draw_header(stdscr, w, state.selected_tab)
                     draw_footer(stdscr, w, h, state)
+                    draw_error_footer(stdscr, w, h, state)
                     if list_win: draw_list(list_win, state)
                     if detail_win: draw_details(detail_win, state)
                     
@@ -326,21 +332,27 @@ def main(stdscr):
 
                 if state.update_available:
                      try:
-                         draw_update_modal(stdscr, h//2, w//2)
-                         curses.doupdate()
-                         # Blocking wait for Y/N
-                         while True:
-                             key = stdscr.getch()
-                             if key in (ord('y'), ord('Y'), 10, 13):
-                                 stdscr.clear()
-                                 stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
-                                 stdscr.refresh()
-                                 backend.perform_update()
-                                 return # Exit to restart
-                             elif key in (ord('n'), ord('N'), 27):
-                                 state_mgr.set_update_available(False)
-                                 stdscr.clear() # clear modal artifacts
-                                 break
+                         # Acquire lock to prevent state changes during modal
+                         state_mgr.acquire_lock()
+                         try:
+                             draw_update_modal(stdscr, h//2, w//2)
+                             curses.doupdate()
+                             # Blocking wait for Y/N (with lock held)
+                             while True:
+                                 key = stdscr.getch()
+                                 if key in (ord('y'), ord('Y'), 10, 13):
+                                     stdscr.clear()
+                                     stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
+                                     stdscr.refresh()
+                                     state_mgr.release_lock()  # Release before update
+                                     backend.perform_update()
+                                     return # Exit to restart
+                                 elif key in (ord('n'), ord('N'), 27):
+                                     state_mgr.set_update_available(False)
+                                     stdscr.clear() # clear modal artifacts
+                                     break
+                         finally:
+                             state_mgr.release_lock()
                      except NameError:
                          # Fallback if UI not updated
                          logging.error("draw_update_modal not defined")

@@ -515,3 +515,35 @@ def draw_update_modal(stdscr, cy, cx):
             win.addstr(1+i, 2, line)
             
     win.refresh()
+
+def draw_error_footer(stdscr: 'curses._CursesWindow', w: int, h: int, state: 'AppState') -> None:
+    """
+    Draw error message in footer with RED color if error is recent (< 3 seconds).
+    
+    Args:
+        stdscr: Curses window
+        w: Terminal width
+        h: Terminal height
+        state: Application state
+    """
+    import time
+    
+    if not state.last_error:
+        return
+    
+    current_time = time.time()
+    time_elapsed = current_time - state.error_timestamp
+    
+    # Auto-clear error after 3 seconds
+    if time_elapsed > 3.0:
+        return
+    
+    # Display error in bottom-left corner with RED color
+    error_line = state.last_error[:w-2]  # Truncate to fit width
+    try:
+        stdscr.attron(curses.color_pair(3))  # RED color
+        stdscr.addstr(h - 1, 1, f"ERROR: {error_line}", curses.A_BOLD | curses.color_pair(3))
+        stdscr.attroff(curses.color_pair(3))
+    except curses.error:
+        # Ignore if window is too small or position invalid
+        pass

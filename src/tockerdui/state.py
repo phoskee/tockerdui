@@ -44,7 +44,7 @@ class StateManager:
     """Thread-safe state manager."""
     def __init__(self):
         self._state = AppState()
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # Use RLock for reentrant locking
         self._version = 0
     
     def get_version(self):
@@ -53,6 +53,14 @@ class StateManager:
     def _inc_version(self):
         # Assumes lock is held
         self._version += 1
+    
+    def acquire_lock(self) -> None:
+        """Acquire state lock for critical sections (e.g., modal dialogs)."""
+        self._lock.acquire()
+    
+    def release_lock(self) -> None:
+        """Release state lock."""
+        self._lock.release()
     
     def update_containers(self, containers):
         with self._lock: 
@@ -63,7 +71,7 @@ class StateManager:
             self._state.containers = containers
             self._inc_version()
     
-    def update_container_stats(self, container_id, cpu, ram):
+    def update_container_stats(self, container_id: str, cpu: str, ram: str) -> None:
         with self._lock:
             for c in self._state.containers:
                 if c.id == container_id:
@@ -72,12 +80,12 @@ class StateManager:
                     self._inc_version()
                     break
 
-    def update_images(self, images):
+    def update_images(self, images: List['ImageInfo']) -> None:
         with self._lock: 
             self._state.images = images
             self._inc_version()
 
-    def update_volumes(self, volumes):
+    def update_volumes(self, volumes: List['VolumeInfo']) -> None:
         with self._lock: 
             self._state.volumes = volumes
             self._inc_version()
@@ -92,14 +100,29 @@ class StateManager:
             self._state.composes = composes
             self._inc_version()
 
-    def set_logs(self, logs):
+    def set_logs(self, logs: List[str]) -> None:
         with self._lock: 
             self._state.logs = logs
             self._inc_version()
 
-    def set_message(self, message: str):
+    def set_message(self, message: str) -> None:
         with self._lock:
             self._state.message = message
+            self._inc_version()
+    
+    def set_error(self, error_msg: str) -> None:
+        """Set error message that will auto-clear after 3 seconds."""
+        import time
+        with self._lock:
+            self._state.last_error = error_msg
+            self._state.error_timestamp = time.time()
+            self._inc_version()
+    
+    def clear_error(self) -> None:
+        """Clear error message."""
+        with self._lock:
+            self._state.last_error = ""
+            self._state.error_timestamp = 0.0
             self._inc_version()
 
     def set_tab(self, tab):
@@ -284,7 +307,7 @@ class StateManager:
             self._state.update_available = available
             self._inc_version()
 
-    def get_selected_item_id(self):
+    def get_selected_item_id(self) -> Optional[str]:
         with self._lock:
             current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
             idx = self._state.selected_index
@@ -305,10 +328,10 @@ class ListWorker(threading.Thread):
         self.running = True
         self._force_refresh_flag = False
     
-    def force_refresh(self):
+    def force_refresh(self) -> None:
         self._force_refresh_flag = True
 
-    def run(self):
+    def run(self) -> None:
         counter = 0
         # Check updates once at startup
         if self.backend.check_for_updates():
@@ -347,7 +370,7 @@ class LogsWorker(threading.Thread):
         self.backend = backend
         self.running = True
 
-    def run(self):
+    def run(self) -> None:
         while self.running:
             try:
                 snapshot = self.state_manager.get_snapshot()
@@ -371,7 +394,7 @@ class StatsWorker(threading.Thread):
         self.backend = backend
         self.running = True
 
-    def run(self):
+    def run(self) -> None:
         # Slower loop, independent of UI/Resources
         while self.running:
             try:

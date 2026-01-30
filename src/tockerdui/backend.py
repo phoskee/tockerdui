@@ -354,6 +354,64 @@ class DockerBackend:
         except Exception as e:
             return False
 
+    # --- COMPOSE ACTIONS ---
+    
+    @docker_safe(default_return=None)
+    def compose_up(self, project_name: str) -> None:
+        """Start services for a Docker Compose project."""
+        try:
+            subprocess.run(
+                ["docker", "compose", "-p", project_name, "up", "-d"],
+                check=True,
+                capture_output=True
+            )
+            logging.info(f"Compose project '{project_name}' started successfully")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to start compose project '{project_name}': {e.stderr.decode()}")
+            raise
+    
+    @docker_safe(default_return=None)
+    def compose_down(self, project_name: str) -> None:
+        """Stop and remove services for a Docker Compose project."""
+        try:
+            subprocess.run(
+                ["docker", "compose", "-p", project_name, "down"],
+                check=True,
+                capture_output=True
+            )
+            logging.info(f"Compose project '{project_name}' stopped successfully")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to stop compose project '{project_name}': {e.stderr.decode()}")
+            raise
+    
+    @docker_safe(default_return=None)
+    def compose_remove(self, project_name: str) -> None:
+        """Remove services, volumes, and networks for a Docker Compose project."""
+        try:
+            subprocess.run(
+                ["docker", "compose", "-p", project_name, "down", "-v"],
+                check=True,
+                capture_output=True
+            )
+            logging.info(f"Compose project '{project_name}' removed successfully")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to remove compose project '{project_name}': {e.stderr.decode()}")
+            raise
+    
+    @docker_safe(default_return=None)
+    def compose_pause(self, project_name: str) -> None:
+        """Pause services for a Docker Compose project."""
+        try:
+            subprocess.run(
+                ["docker", "compose", "-p", project_name, "pause"],
+                check=True,
+                capture_output=True
+            )
+            logging.info(f"Compose project '{project_name}' paused successfully")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to pause compose project '{project_name}': {e.stderr.decode()}")
+            raise
+
     def perform_update(self):
         try:
             source_path = self._get_source_path()
