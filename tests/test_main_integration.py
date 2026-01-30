@@ -13,7 +13,14 @@ def test_main_loop_init(mocker):
     mocker.patch('curses.start_color')
     mocker.patch('curses.use_default_colors')
     mocker.patch('curses.init_pair')
-    mocker.patch('curses.newwin', return_value=MagicMock())
+    mocker.patch('curses.color_pair', return_value=0)
+    mocker.patch('curses.doupdate')
+    mocker.patch('curses.init_pair')
+    
+    msg_win_mock = MagicMock()
+    msg_win_mock.getmaxyx.return_value = (10, 80)
+    msg_win_mock.getch.return_value = -1
+    mocker.patch('curses.newwin', return_value=msg_win_mock)
 
     # Mock Backend to avoid real docker calls
     mocker.patch('tockerdui.backend.DockerBackend')
@@ -26,4 +33,4 @@ def test_main_loop_init(mocker):
 
     # Verify initialization happened
     mock_stdscr.nodelay.assert_called_with(True)
-    mock_stdscr.erase.assert_called()
+    mock_stdscr.clear.assert_called()
