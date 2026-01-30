@@ -146,6 +146,13 @@ def handle_compose_action(key: str, item_id: str, backend: DockerBackend,
         
     return action_taken
 
+def handle_network_action(key: str, item_id: str, backend: DockerBackend,
+                        stdscr, state_mgr: StateManager) -> bool:
+    """Handle actions for networks."""
+    # Currently networks rely mostly on common actions (inspect/delete)
+    # This handler is a placeholder for future specific network actions
+    return False
+
 def handle_common_action(key: str, tab: str, item_id: str, backend: DockerBackend,
                        stdscr, state_mgr: StateManager) -> bool:
     """Handle common actions like inspect, delete, prune."""
