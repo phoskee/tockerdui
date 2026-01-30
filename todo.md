@@ -2,7 +2,7 @@
 
 **Last Updated:** 30 Gennaio 2026  
 **Total Effort:** 45-57 hours (4 sprints)  
-**Current Status:** ✅ SPRINT 1 COMPLETATO (6/6 tasks done)
+**Current Status:** ✅ SPRINT 1 COMPLETATO + Sprint 2 In Progress (Task 2.1/7 done)
 
 ---
 
@@ -71,7 +71,7 @@
 
 ### Task
 
-- [ ] **2.1** - Centralizzare error handling in backend (1h)
+- [x] **2.1** - Centralizzare error handling in backend (1h) ✅
   - **File:** `src/tockerdui/backend.py`
   - **Descrizione:**
     - Creare decorator `@docker_safe` che:

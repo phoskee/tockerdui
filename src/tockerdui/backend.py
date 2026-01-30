@@ -35,8 +35,39 @@ import io
 import subprocess
 import resource
 import platform
-from typing import List, Tuple
+import logging
+import functools
+from typing import List, Tuple, Any, Callable
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
+
+logger = logging.getLogger(__name__)
+
+def docker_safe(default_return: Any = None) -> Callable:
+    """
+    Decorator for Docker API methods that ensures safe error handling.
+    
+    Catches exceptions, logs them, and returns a default value to prevent
+    silent failures and UI crashes.
+    
+    Args:
+        default_return: Value to return if exception occurs ([], {}, None, etc.)
+    
+    Usage:
+        @docker_safe(default_return=[])
+        def get_containers(self) -> List[ContainerInfo]:
+            ...
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Docker operation failed in {func.__name__}: {e}", exc_info=True)
+                return default_return
+        return wrapper
+    return decorator
+
 
 
 class DockerBackend:
@@ -46,188 +77,181 @@ class DockerBackend:
         except Exception:
             self.client = None
 
+    @docker_safe(default_return=[])
     def get_containers(self) -> List[ContainerInfo]:
         if not self.client: return []
-        try:
-            raw = self.client.containers.list(all=True)
-            res = []
-            for c in raw:
-                project = c.labels.get('com.docker.compose.project', 'standalone')
-                image_tag = c.image.tags[0] if c.image.tags else (c.image.short_id if c.image.short_id else "unknown")
-                res.append(ContainerInfo(
-                    id=c.id,
-                    short_id=c.short_id,
-                    name=c.name,
-                    status=c.status,
-                    image=image_tag,
-                    project=project
-                ))
-            return res
-        except Exception:
-            return []
+        raw = self.client.containers.list(all=True)
+        res = []
+        for c in raw:
+            project = c.labels.get('com.docker.compose.project', 'standalone')
+            image_tag = c.image.tags[0] if c.image.tags else (c.image.short_id if c.image.short_id else "unknown")
+            res.append(ContainerInfo(
+                id=c.id,
+                short_id=c.short_id,
+                name=c.name,
+                status=c.status,
+                image=image_tag,
+                project=project
+            ))
+        return res
 
+    @docker_safe(default_return="")
     def get_self_usage(self) -> str:
-        try:
-            pid = os.getpid()
-            
-            # MEMORY: Use resource module (more accurate than ps)
-            # MacOS returns bytes, Linux returns KB
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            rss_val = usage.ru_maxrss
-            if platform.system() == 'Darwin':
-                rss_mb = rss_val / (1024 * 1024)
-            else:
-                rss_mb = rss_val / 1024
-            
-            # CPU: Use ps (best option without psutil)
-            cmd = ["ps", "-p", str(pid), "-o", "%cpu"]
-            # Output: %CPU \n 0.0
-            output = subprocess.check_output(cmd).decode().strip().splitlines()
-            cpu = "?"
-            if len(output) >= 2:
-                cpu = output[1].strip().replace(',', '.') # Handle 0,0
-            
-            return f"CPU: {cpu}% MEM: {rss_mb:.1f}MB"
-        except Exception:
-            return ""
+        pid = os.getpid()
+        
+        # MEMORY: Use resource module (more accurate than ps)
+        # MacOS returns bytes, Linux returns KB
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        rss_val = usage.ru_maxrss
+        if platform.system() == 'Darwin':
+            rss_mb = rss_val / (1024 * 1024)
+        else:
+            rss_mb = rss_val / 1024
+        
+        # CPU: Use ps (best option without psutil)
+        cmd = ["ps", "-p", str(pid), "-o", "%cpu"]
+        # Output: %CPU \n 0.0
+        output = subprocess.check_output(cmd).decode().strip().splitlines()
+        cpu = "?"
+        if len(output) >= 2:
+            cpu = output[1].strip().replace(',', '.') # Handle 0,0
+        
+        return f"CPU: {cpu}% MEM: {rss_mb:.1f}MB"
 
+    @docker_safe(default_return=("--", "--"))
     def get_container_stats(self, container_id: str) -> Tuple[str, str]:
         if not self.client: return "--", "--"
-        try:
-            c = self.client.containers.get(container_id)
-            if c.status != 'running': return "0.0%", "0.0MB"
-            stats = c.stats(stream=False)
-            cpu_stats = stats.get('cpu_stats', {})
-            precpu_stats = stats.get('precpu_stats', {})
-            cpu_usage = cpu_stats.get('cpu_usage', {}).get('total_usage', 0)
-            precpu_usage = precpu_stats.get('cpu_usage', {}).get('total_usage', 0)
-            system_cpu_usage = cpu_stats.get('system_cpu_usage', 0)
-            presystem_cpu_usage = precpu_stats.get('system_cpu_usage', 0)
-            online_cpus = cpu_stats.get('online_cpus', len(cpu_stats.get('cpu_usage', {}).get('percpu_usage', [])) or 1)
-            cpu_delta = cpu_usage - precpu_usage
-            system_delta = system_cpu_usage - presystem_cpu_usage
-            cpu_percent = 0.0
-            if system_delta > 0.0 and cpu_delta > 0.0:
-                cpu_percent = (cpu_delta / system_delta) * online_cpus * 100.0
-            mem_usage_bytes = stats.get('memory_stats', {}).get('usage', 0)
-            mem_usage_mb = mem_usage_bytes / (1024 * 1024)
-            return f"{cpu_percent:.1f}%", f"{mem_usage_mb:.1f}MB"
-        except Exception:
-            return "--", "--"
+        c = self.client.containers.get(container_id)
+        if c.status != 'running': return "0.0%", "0.0MB"
+        stats = c.stats(stream=False)
+        cpu_stats = stats.get('cpu_stats', {})
+        precpu_stats = stats.get('precpu_stats', {})
+        cpu_usage = cpu_stats.get('cpu_usage', {}).get('total_usage', 0)
+        precpu_usage = precpu_stats.get('cpu_usage', {}).get('total_usage', 0)
+        system_cpu_usage = cpu_stats.get('system_cpu_usage', 0)
+        presystem_cpu_usage = precpu_stats.get('system_cpu_usage', 0)
+        online_cpus = cpu_stats.get('online_cpus', len(cpu_stats.get('cpu_usage', {}).get('percpu_usage', [])) or 1)
+        cpu_delta = cpu_usage - precpu_usage
+        system_delta = system_cpu_usage - presystem_cpu_usage
+        cpu_percent = 0.0
+        if system_delta > 0.0 and cpu_delta > 0.0:
+            cpu_percent = (cpu_delta / system_delta) * online_cpus * 100.0
+        mem_usage_bytes = stats.get('memory_stats', {}).get('usage', 0)
+        mem_usage_mb = mem_usage_bytes / (1024 * 1024)
+        return f"{cpu_percent:.1f}%", f"{mem_usage_mb:.1f}MB"
 
+    @docker_safe(default_return=[])
     def get_images(self) -> List[ImageInfo]:
         if not self.client: return []
-        try:
-            raw = self.client.images.list()
-            res = []
-            for i in raw:
-                tags = i.tags if i.tags else ["<none>"]
-                size_mb = i.attrs.get('Size', 0) / (1024 * 1024)
-                created = i.attrs.get('Created', '')[:10]
-                res.append(ImageInfo(
-                    id=i.id,
-                    short_id=i.short_id if i.short_id else "sha256:...",
-                    tags=tags,
-                    size_mb=size_mb,
-                    created=created
-                ))
-            return res
-        except Exception:
-            return []
+        raw = self.client.images.list()
+        res = []
+        for i in raw:
+            tags = i.tags if i.tags else ["<none>"]
+            size_mb = i.attrs.get('Size', 0) / (1024 * 1024)
+            created = i.attrs.get('Created', '')[:10]
+            res.append(ImageInfo(
+                id=i.id,
+                short_id=i.short_id if i.short_id else "sha256:...",
+                tags=tags,
+                size_mb=size_mb,
+                created=created
+            ))
+        return res
 
+    @docker_safe(default_return=[])
     def get_volumes(self) -> List[VolumeInfo]:
         if not self.client: return []
-        try:
-            raw = self.client.volumes.list()
-            res = []
-            for v in raw:
-                res.append(VolumeInfo(
-                    name=v.name,
-                    driver=v.attrs.get('Driver', 'local'),
-                    mountpoint=v.attrs.get('Mountpoint', 'n/a')
-                ))
-            return res
-        except Exception:
-            return []
+        raw = self.client.volumes.list()
+        res = []
+        for v in raw:
+            res.append(VolumeInfo(
+                name=v.name,
+                driver=v.attrs.get('Driver', 'local'),
+                mountpoint=v.attrs.get('Mountpoint', 'n/a')
+            ))
+        return res
 
+    @docker_safe(default_return=[])
     def get_networks(self) -> List[NetworkInfo]:
         if not self.client: return []
-        try:
-            raw = self.client.networks.list()
-            res = []
-            for n in raw:
-                subnet = "n/a"
-                if n.attrs.get('IPAM') and n.attrs['IPAM'].get('Config'):
-                    configs = n.attrs['IPAM']['Config']
-                    if configs and 'Subnet' in configs[0]:
-                        subnet = configs[0]['Subnet']
-                res.append(NetworkInfo(
-                    id=n.id,
-                    name=n.name,
-                    driver=n.attrs.get('Driver', 'bridge'),
-                    subnet=subnet
-                ))
-            return res
-        except Exception:
-            return []
+        raw = self.client.networks.list()
+        res = []
+        for n in raw:
+            subnet = "n/a"
+            if n.attrs.get('IPAM') and n.attrs['IPAM'].get('Config'):
+                configs = n.attrs['IPAM']['Config']
+                if configs and 'Subnet' in configs[0]:
+                    subnet = configs[0]['Subnet']
+            res.append(NetworkInfo(
+                id=n.id,
+                name=n.name,
+                driver=n.attrs.get('Driver', 'bridge'),
+                subnet=subnet
+            ))
+        return res
 
+    @docker_safe(default_return=[])
     def get_composes(self) -> List[ComposeInfo]:
         if not self.client: return []
-        try:
-            containers = self.client.containers.list(all=True)
-            projects = {}
-            for c in containers:
-                p_name = c.labels.get('com.docker.compose.project')
-                if p_name:
-                    if p_name not in projects:
-                        projects[p_name] = {"files": c.labels.get('com.docker.compose.project.config_files', 'n/a'), "statuses": []}
-                    projects[p_name]["statuses"].append(c.status)
-            res = []
-            for name, data in projects.items():
-                stats = set(data["statuses"])
-                if len(stats) == 1: status = stats.pop()
-                else: status = "mixed"
-                res.append(ComposeInfo(name=name, config_files=data["files"], status=status))
-            return res
-        except Exception:
-            return []
+        containers = self.client.containers.list(all=True)
+        projects = {}
+        for c in containers:
+            p_name = c.labels.get('com.docker.compose.project')
+            if p_name:
+                if p_name not in projects:
+                    projects[p_name] = {"files": c.labels.get('com.docker.compose.project.config_files', 'n/a'), "statuses": []}
+                projects[p_name]["statuses"].append(c.status)
+        res = []
+        for name, data in projects.items():
+            stats = set(data["statuses"])
+            if len(stats) == 1: status = stats.pop()
+            else: status = "mixed"
+            res.append(ComposeInfo(name=name, config_files=data["files"], status=status))
+        return res
 
+    @docker_safe(default_return=["Docker not connected"])
     def get_logs(self, container_id: str, tail: int = 50) -> List[str]:
         if not self.client: return ["Docker not connected"]
-        try:
-            container = self.client.containers.get(container_id)
-            logs_bytes = container.logs(tail=tail)
-            return logs_bytes.decode('utf-8', errors='replace').splitlines()
-        except Exception as e:
-            return [f"Error fetching logs: {str(e)}"]
+        container = self.client.containers.get(container_id)
+        logs_bytes = container.logs(tail=tail)
+        return logs_bytes.decode('utf-8', errors='replace').splitlines()
 
     # Actions
+    @docker_safe(default_return=None)
     def start_container(self, container_id: str):
         self.client.containers.get(container_id).start()
 
+    @docker_safe(default_return=None)
     def stop_container(self, container_id: str):
         self.client.containers.get(container_id).stop()
 
+    @docker_safe(default_return=None)
     def restart_container(self, container_id: str):
         self.client.containers.get(container_id).restart()
     
+    @docker_safe(default_return=None)
     def pause_container(self, container_id: str):
         self.client.containers.get(container_id).pause()
 
+    @docker_safe(default_return=None)
     def unpause_container(self, container_id: str):
         self.client.containers.get(container_id).unpause()
 
+    @docker_safe(default_return=None)
     def remove_container(self, container_id: str):
         self.client.containers.get(container_id).remove(force=True)
 
+    @docker_safe(default_return=None)
     def rename_container(self, container_id: str, new_name: str):
         if not self.client or not new_name: return
         self.client.containers.get(container_id).rename(new_name)
 
+    @docker_safe(default_return=None)
     def commit_container(self, container_id: str, repository: str, tag: str = None):
         if not self.client or not repository: return
         self.client.containers.get(container_id).commit(repository=repository, tag=tag)
 
+    @docker_safe(default_return=None)
     def copy_to_container(self, container_id: str, src_path: str, dest_path: str):
         if not self.client or not src_path or not dest_path: return
         c = self.client.containers.get(container_id)
