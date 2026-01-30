@@ -36,7 +36,7 @@ class KeyBindings:
     filter: str = "/"
     tab_focus: str = "tab"
     bulk_mode: str = "b"
-    select_toggle: str = "space"
+    select_toggle: str = " "
     select_all: str = "a"
     select_none: str = "d"
     enter: str = "enter"
@@ -63,7 +63,7 @@ class UIConfig:
     color_theme: ColorTheme = field(default_factory=ColorTheme)
     show_usage: bool = True
     auto_scroll_logs: bool = True
-    refresh_interval: int = 100  # milliseconds
+    refresh_interval: int = 250  # milliseconds (Reduced framerate for lower CPU)
 
 @dataclass
 class DockerConfig:
@@ -211,7 +211,7 @@ class ConfigManager:
     def is_key_binding(self, key: str, action: str) -> bool:
         """Check if key matches the binding for action."""
         binding = self.get_key_binding(action)
-        return key.lower() == binding.lower()
+        return key == binding
     
     def get_log_level(self) -> str:
         """Get configured log level."""

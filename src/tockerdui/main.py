@@ -315,7 +315,7 @@ def main(stdscr):
                 elif key == 27: # ESC
                     state_mgr.set_filter_text("")
                 
-                elif key == ord('S'): # Sort (Upper S, distinct from start)
+                elif key == ord('S') and state.selected_tab == "containers": # Sort (Upper S)
                      state_mgr.cycle_sort_mode()
 
                 # Action Menu (Enter)

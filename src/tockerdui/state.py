@@ -449,10 +449,10 @@ class ListWorker(threading.Thread):
                     
             except Exception as e:
                 logger.error(f"ListWorker error: {e}", exc_info=True)
-                time.sleep(1.0)
+                time.sleep(2.0)
             
             counter += 1
-            time.sleep(0.5)
+            time.sleep(1.0)  # Reduced polling frequency
 
 class LogsWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):
@@ -527,7 +527,7 @@ class LogsWorker(threading.Thread):
                         # File descriptor closed
                         self.process = None
                 else:
-                    time.sleep(0.2)
+                    time.sleep(0.5)  # Sleep longer when idle
                     
             except Exception as e:
                 time.sleep(1.0)
@@ -570,7 +570,7 @@ class StatsWorker(threading.Thread):
                     time.sleep(0.1) 
                 
                 # If no containers or after loop, sleep a bit
-                time.sleep(2.0)
+                time.sleep(4.0)  # Reduced stats frequency
             except Exception as e:
                 logger.error(f"StatsWorker error: {e}", exc_info=True)
                 time.sleep(1.0)
