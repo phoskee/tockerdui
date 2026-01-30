@@ -233,11 +233,11 @@ def main(stdscr):
                     logging.info("Quitting")
                     worker.running = False
                     break
-                elif key == curses.KEY_F1: state_mgr.set_tab("containers")
-                elif key == curses.KEY_F2: state_mgr.set_tab("images")
-                elif key == curses.KEY_F3: state_mgr.set_tab("volumes")
-                elif key == curses.KEY_F4: state_mgr.set_tab("networks")
-                elif key == curses.KEY_F5: state_mgr.set_tab("compose")
+                elif key == ord('1'): state_mgr.set_tab("containers")
+                elif key == ord('2'): state_mgr.set_tab("images")
+                elif key == ord('3'): state_mgr.set_tab("volumes")
+                elif key == ord('4'): state_mgr.set_tab("networks")
+                elif key == ord('5'): state_mgr.set_tab("compose")
                 elif key in (ord('h'), ord('?')): 
                     draw_help_modal(stdscr, h//2, w//2)
                     stdscr.clearok(True)
@@ -277,6 +277,8 @@ def main(stdscr):
                                 handle_action(chr(key), state.selected_tab, item_id, backend, stdscr, state_mgr, state)
                         except: pass
 
+            except StopIteration:
+                break
             except Exception as e:
                 logging.error(f"Error in main loop: {e}", exc_info=True)
                 time.sleep(1) # Prevent tight loop on error

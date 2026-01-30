@@ -56,7 +56,7 @@ def draw_footer(stdscr, width, height, state: AppState):
         # Sort Indicator
         sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
         # Shortcut bar
-        help_txt = " Enter: Menu | F1-F5: Tabs | /: Filter | S: Sort | P: Prune | q: Quit "
+        help_txt = " Enter: Menu | 1-5: Tabs | /: Filter | S: Sort | P: Prune | q: Quit "
         stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))
         stdscr.addstr(bar_y, len(sort_info), help_txt, curses.A_DIM)
     
@@ -237,7 +237,7 @@ def draw_help_modal(stdscr, cy, cx):
         " tockerdui HELP ",
         "------------------",
         " Navigation:",
-        "  F1-F5       : Switch Tabs",
+        "  1-5         : Switch Tabs",
         "  Up/Down     : Select Item",
         "  Enter       : Actions Menu",
         "  /           : Search Filter",
