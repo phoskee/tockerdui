@@ -2,6 +2,7 @@ import docker
 import os
 import tarfile
 import io
+import subprocess
 from typing import List, Tuple
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
 
