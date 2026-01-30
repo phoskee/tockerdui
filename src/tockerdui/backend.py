@@ -223,23 +223,53 @@ class DockerBackend:
         if not self.client: return
         self.client.volumes.create(name=name)
 
+    def _get_source_path(self) -> str:
+        try:
+            # Assuming installed at $INSTALL_DIR/tockerdui/backend.py
+            # We want $INSTALL_DIR/source_path
+            install_dir = os.path.dirname(os.path.dirname(__file__))
+            source_path_file = os.path.join(install_dir, "source_path")
+            
+            if os.path.exists(source_path_file):
+                with open(source_path_file, 'r') as f:
+                    path = f.read().strip()
+                    if os.path.isdir(path):
+                        return path
+            
+            # Fallback: maybe we are running from source? check for .git in parent of package
+            # package is src/tockerdui. parent is src. parent of parent is root.
+            possible_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            if os.path.exists(os.path.join(possible_root, ".git")):
+                return possible_root
+                
+            return None
+        except Exception:
+            return None
+
     def check_for_updates(self) -> bool:
         try:
-            # Check if we are in a git repo
-            if not os.path.exists(".git"): return False
+            source_path = self._get_source_path()
+            if not source_path: return False
             
             # Fetch remote
-            subprocess.check_call(["git", "fetch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(["git", "fetch"], cwd=source_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
-            # Check for changes
-            output = subprocess.check_output(["git", "rev-list", "HEAD...origin/main", "--count"])
+            # Check for INCOMING changes (origin/main ahead of HEAD)
+            # HEAD..origin/main
+            output = subprocess.check_output(
+                ["git", "rev-list", "HEAD..origin/main", "--count"], 
+                cwd=source_path
+            )
             count = int(output.decode('utf-8').strip())
             return count > 0
         except Exception:
+            # logging.error(f"Update check failed: {e}")
             return False
 
     def perform_update(self):
         try:
-            subprocess.call(["./update.sh"])
+            source_path = self._get_source_path()
+            if source_path:
+                subprocess.call(["./update.sh"], cwd=source_path)
         except Exception:
             pass
