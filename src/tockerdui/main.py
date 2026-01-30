@@ -225,24 +225,13 @@ def main(stdscr):
                 key = stdscr.getch()
                 if key == curses.ERR: continue
                 
-                if state.update_available:
-                     draw_update_modal(stdscr, h//2, w//2)
-                     curses.doupdate()
-                     # Blocking wait for Y/N
-                     while True:
-                         key = stdscr.getch()
-                         if key in (ord('y'), ord('Y'), 10, 13):
-                             stdscr.clear()
-                             stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
-                             stdscr.refresh()
-                             backend.perform_update()
-                             return # Exit to restart
-                         elif key in (ord('n'), ord('N'), 27):
-                             state_mgr.set_update_available(False)
-                             stdscr.clear() # clear modal artifacts
-                             break
-                     continue
-
+                # Global/High Priority Keys
+                if key == ord('q') and not state.is_filtering:
+                    logging.info("Quitting")
+                    resource_worker.running = False
+                    stats_worker.running = False
+                    break
+                
                 if state.is_filtering:
                     if key == 27: state_mgr.set_filtering(False)
                     elif key in (10, 13): state_mgr.set_filtering(False)
@@ -251,6 +240,29 @@ def main(stdscr):
                     elif 32 <= key <= 126:
                         state_mgr.set_filter_text(state.filter_text + chr(key))
                     continue
+
+                if state.update_available:
+                     try:
+                         draw_update_modal(stdscr, h//2, w//2)
+                         curses.doupdate()
+                         # Blocking wait for Y/N
+                         while True:
+                             key = stdscr.getch()
+                             if key in (ord('y'), ord('Y'), 10, 13):
+                                 stdscr.clear()
+                                 stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
+                                 stdscr.refresh()
+                                 backend.perform_update()
+                                 return # Exit to restart
+                             elif key in (ord('n'), ord('N'), 27):
+                                 state_mgr.set_update_available(False)
+                                 stdscr.clear() # clear modal artifacts
+                                 break
+                     except NameError:
+                         # Fallback if UI not updated
+                         logging.error("draw_update_modal not defined")
+                         state_mgr.set_update_available(False)
+                     continue
 
                 if key == ord('q'):
                     logging.info("Quitting")
