@@ -10,7 +10,7 @@ logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG,
 
 from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
-from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal
+from .ui import init_colors, draw_header, draw_list, draw_details, draw_footer, prompt_input, draw_help_modal, action_menu, draw_update_modal, ask_confirmation
 
 def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
     try:
@@ -21,7 +21,8 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
         if key == 's' and tab == "containers":
             backend.start_container(item_id)
         elif key == 't' and tab == "containers":
-            backend.stop_container(item_id)
+            if ask_confirmation(stdscr, h//2, w//2, "Stop container?"):
+                 backend.stop_container(item_id)
         elif key == 'r' and tab == "containers":
             backend.restart_container(item_id)
         elif key == 'z' and tab == "containers":
@@ -80,12 +81,29 @@ def handle_action(key, tab, item_id, backend, stdscr, state_mgr, state):
             stdscr.nodelay(True)
             stdscr.clearok(True)
             stdscr.refresh()
+            stdscr.refresh()
         elif key == 'd':
-            if tab == "containers": backend.remove_container(item_id)
-            elif tab == "images": backend.remove_image(item_id)
-            elif tab == "volumes": backend.remove_volume(item_id)
-            elif tab == "networks": backend.remove_network(item_id)
-        
+            if ask_confirmation(stdscr, h//2, w//2, f"Delete {tab[:-1]}?"):
+                if tab == "containers": backend.remove_container(item_id)
+                elif tab == "images": backend.remove_image(item_id)
+                elif tab == "volumes": backend.remove_volume(item_id)
+                elif tab == "networks": backend.remove_network(item_id)
+        elif key == 'P':
+             if ask_confirmation(stdscr, h//2, w//2, "Prune system (all unused)?"):
+                 curses.def_prog_mode()
+                 curses.endwin()
+                 try: 
+                     print("Pruning system...")
+                     backend.prune_all()
+                     print("Done.")
+                     time.sleep(1)
+                 except: pass
+                 curses.reset_prog_mode()
+                 curses.curs_set(0)
+                 stdscr.nodelay(True)
+                 stdscr.clearok(True)
+                 stdscr.refresh()
+
         # --- IMAGE ACTIONS ---
         elif key == 'p' and tab == "images":
             img_info = next((i for i in state.images if i.id == item_id), None)

@@ -57,7 +57,7 @@ def draw_footer(stdscr, width, height, state: AppState):
         sort_info = f" [SORT: {state.sort_mode.upper()}] " if state.selected_tab == "containers" else ""
         # Shortcut bar
         focus_txt = f" TAB: Focus ({state.focused_pane.upper()}) "
-        help_txt = "| Enter: Menu | 1-5: Tabs | /: Filter | q: Quit "
+        help_txt = "| Enter: Menu | P: Prune | q: Quit | ?: Help "
         
         # Draw Focus info
         stdscr.addstr(bar_y, 0, sort_info, curses.color_pair(5))
@@ -299,6 +299,51 @@ def prompt_input(stdscr, cy, cx, prompt):
     
     return None
 
+def ask_confirmation(stdscr, cy, cx, question: str) -> bool:
+    # Generic Y/N modal
+    msg = f" {question} (Y/n) "
+    width = max(30, len(msg) + 4)
+    height = 5
+    win = curses.newwin(height, width, cy - height//2, cx - width//2)
+    win.attron(curses.color_pair(3)) # Yellow/Red border
+    win.box()
+    win.attroff(curses.color_pair(3))
+    win.addstr(1, 1, msg.center(width-2), curses.A_BOLD)
+    
+    selected = True # Yes by default
+    
+    while True:
+        # Draw buttons
+        y_btn = 3
+        # Ensure buttons fit
+        if width < 20: 
+            x_yes = 1
+            x_no = 8
+        else:
+            x_yes = width // 2 - 8
+            x_no = width // 2 + 4
+        
+        style_yes = curses.A_REVERSE if selected else curses.A_NORMAL
+        style_no = curses.A_REVERSE if not selected else curses.A_NORMAL
+        
+        try:
+            win.addstr(y_btn, x_yes, " [ YES ] ", style_yes)
+            win.addstr(y_btn, x_no, " [ NO ] ", style_no)
+        except: pass
+        
+        win.refresh()
+        
+        key = win.getch()
+        if key == curses.KEY_LEFT or key == curses.KEY_RIGHT or key == ord('\t'):
+            selected = not selected
+        elif key in (10, 13, ord('y'), ord('Y')):
+            return True if selected else False
+        elif key in (27, ord('n'), ord('N')):
+            return False
+        elif key == ord('q'): return False
+
+def action_menu(stdscr, cy, cx, tab, item_id):
+
 def action_menu(stdscr, cy, cx, tab, item_id):
     actions = []
     if tab == "containers":
@@ -336,7 +381,6 @@ def action_menu(stdscr, cy, cx, tab, item_id):
         elif key == 27: return None
 
 def draw_help_modal(stdscr, cy, cx):
-    lines = [
         " tockerdui HELP ",
         "------------------",
         " Navigation:",
@@ -344,18 +388,26 @@ def draw_help_modal(stdscr, cy, cx):
         "  Up/Down     : Select Item",
         "  Enter       : Actions Menu",
         "  /           : Search Filter",
+        "  TAB         : Toggle Focus",
+        "  q           : Quit",
+        "",
+        " Global Actions:",
+        "  P           : Prune System (Confirm)",
+        "  U           : Check Updates",
         "",
         " Container Actions:",
         "  s/t/r       : Start/Stop/Restart",
         "  z/x/l       : Pause/Shell/Logs",
+        "  d           : Delete (Confirm)",
         "",
         " Image Actions:",
         "  R/p         : Run/Pull",
         "  B/H         : Build/History",
+        "  d           : Delete (Confirm)",
         "",
         " Press any key to close "
     ]
-    width = 40
+    width = 50
     height = len(lines) + 2
     win = curses.newwin(height, width, cy - height//2, cx - width//2)
     win.attron(curses.color_pair(4))

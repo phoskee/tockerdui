@@ -209,6 +209,12 @@ class DockerBackend:
         
         c.put_archive(path=dest_path, data=tar_stream)
 
+    def remove_image(self, image_id: str):
+        if not self.client: return
+        try:
+            self.client.images.get(image_id).remove(force=True)
+        except: pass
+
     def save_image(self, image_id: str, file_path: str):
         if not self.client or not file_path: return
         image = self.client.images.get(image_id)
