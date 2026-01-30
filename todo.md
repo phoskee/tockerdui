@@ -326,13 +326,13 @@
 
 ## ⏱️ Effort Breakdown
 
-| Sprint                       | Hours           | Status           | Target Date        |
-| ---------------------------- | --------------- | ---------------- | ----------- |
-| Sprint 1 (Stabilità Critica) | 8-10h           | ✅ COMPLETATO    | ✅ 30 Gen 2026 |
-| Sprint 2 (Error Handling)    | 12-15h          | ⏳ TODO           | Next week   |
-| Sprint 3 (Testing & Quality) | 10-12h          | ⏳ TODO           | Week 3      |
-| Sprint 4 (Features)          | 15-20h          | ⏳ TODO           | Week 4-5    |
-| **TOTAL**                    | **45-57 hours** | -                | ~2 months   |
+| Sprint                       | Hours           | Status        | Target Date    |
+| ---------------------------- | --------------- | ------------- | -------------- |
+| Sprint 1 (Stabilità Critica) | 8-10h           | ✅ COMPLETATO | ✅ 30 Gen 2026 |
+| Sprint 2 (Error Handling)    | 12-15h          | ⏳ TODO       | Next week      |
+| Sprint 3 (Testing & Quality) | 10-12h          | ⏳ TODO       | Week 3         |
+| Sprint 4 (Features)          | 15-20h          | ⏳ TODO       | Week 4-5       |
+| **TOTAL**                    | **45-57 hours** | -             | ~2 months      |
 
 ---
 
