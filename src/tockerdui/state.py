@@ -160,8 +160,7 @@ class StateManager:
                 message=self._state.message,
                 filter_text=self._state.filter_text,
                 is_filtering=self._state.is_filtering,
-                filter_text=self._state.filter_text,
-                is_filtering=self._state.is_filtering,
+
                 sort_mode=self._state.sort_mode,
                 update_available=self._state.update_available
             )
