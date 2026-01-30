@@ -160,9 +160,16 @@ class StateManager:
                 message=self._state.message,
                 filter_text=self._state.filter_text,
                 is_filtering=self._state.is_filtering,
-                sort_mode=self._state.sort_mode
+                filter_text=self._state.filter_text,
+                is_filtering=self._state.is_filtering,
+                sort_mode=self._state.sort_mode,
+                update_available=self._state.update_available
             )
-            
+    
+    def set_update_available(self, available: bool):
+        with self._lock:
+            self._state.update_available = available
+
     def get_selected_item_id(self):
         with self._lock:
             current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
@@ -185,6 +192,10 @@ class BackgroundWorker(threading.Thread):
 
     def run(self):
         counter = 0
+        # Check updates once at startup
+        if self.backend.check_for_updates():
+            self.state_manager.set_update_available(True)
+
         while self.running:
             try:
                 # Fast loop (1s): Containers always

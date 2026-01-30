@@ -222,3 +222,24 @@ class DockerBackend:
     def create_volume(self, name: str):
         if not self.client: return
         self.client.volumes.create(name=name)
+
+    def check_for_updates(self) -> bool:
+        try:
+            # Check if we are in a git repo
+            if not os.path.exists(".git"): return False
+            
+            # Fetch remote
+            subprocess.check_call(["git", "fetch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Check for changes
+            output = subprocess.check_output(["git", "rev-list", "HEAD...origin/main", "--count"])
+            count = int(output.decode('utf-8').strip())
+            return count > 0
+        except Exception:
+            return False
+
+    def perform_update(self):
+        try:
+            subprocess.call(["./update.sh"])
+        except Exception:
+            pass

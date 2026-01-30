@@ -322,3 +322,36 @@ def draw_help_modal(stdscr, cy, cx):
         else: win.addstr(1+i, 2, line)
     win.refresh()
     win.getch()
+
+def draw_update_modal(stdscr, cy, cx):
+    lines = [
+        " UPDATE AVAILABLE ",
+        "------------------",
+        "",
+        " A new version of tockerdui is available!",
+        "",
+        " Do you want to update now?",
+        " (The app will restart)",
+        "",
+        " [Y]es   [N]o "
+    ]
+    width = 46
+    height = len(lines) + 2
+    win = curses.newwin(height, width, cy - height//2, cx - width//2)
+    win.attron(curses.color_pair(4))
+    win.box()
+    win.attroff(curses.color_pair(4))
+    
+    for i, line in enumerate(lines):
+        if i == 0: 
+            win.addstr(1+i, (width-len(line))//2, line, curses.A_BOLD | curses.color_pair(2))
+        elif "[Y]es" in line:
+            # Highlight options
+            start = (width - len(line)) // 2
+            win.addstr(1+i, start, line)
+            # win.addstr(1+i, start + line.find("[Y]"), "[Y]es", curses.color_pair(2) | curses.A_BOLD)
+            # win.addstr(1+i, start + line.find("[N]"), "[N]o", curses.color_pair(3) | curses.A_BOLD)
+        else:
+            win.addstr(1+i, 2, line)
+            
+    win.refresh()

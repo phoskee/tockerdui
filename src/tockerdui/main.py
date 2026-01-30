@@ -220,6 +220,24 @@ def main(stdscr):
                 key = stdscr.getch()
                 if key == curses.ERR: continue
                 
+                if state.update_available:
+                     draw_update_modal(stdscr, h//2, w//2)
+                     curses.doupdate()
+                     # Blocking wait for Y/N
+                     while True:
+                         key = stdscr.getch()
+                         if key in (ord('y'), ord('Y'), 10, 13):
+                             stdscr.clear()
+                             stdscr.addstr(h//2, w//2 - 10, "Updating... please wait.")
+                             stdscr.refresh()
+                             backend.perform_update()
+                             return # Exit to restart
+                         elif key in (ord('n'), ord('N'), 27):
+                             state_mgr.set_update_available(False)
+                             stdscr.clear() # clear modal artifacts
+                             break
+                     continue
+
                 if state.is_filtering:
                     if key == 27: state_mgr.set_filtering(False)
                     elif key in (10, 13): state_mgr.set_filtering(False)

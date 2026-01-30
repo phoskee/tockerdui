@@ -54,3 +54,4 @@ class AppState:
     filter_text: str = ""
     is_filtering: bool = False
     sort_mode: str = "name" # name, status, cpu
+    update_available: bool = False
