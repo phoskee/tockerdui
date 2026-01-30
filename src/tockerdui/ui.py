@@ -69,21 +69,56 @@ def draw_list(win, state: AppState):
     
     # Selection of items and headers
     tab = state.selected_tab
+    
+    # Dynamic Column Widths
+    # Base padding: 2 (start) + 1 (gap) * N = ~6 chars reserved for structure
+    # Define widths map: {tab: (header_str, item_formatter_func)}
+    
     if tab == "containers":
         title, items = " Containers ", state.containers
-        header = f"  {'PROJECT':<12} {'NAME':<20} {'STATUS':<10} {'CPU':<7} {'MEM':<10} {'IMAGE'}"
+        # Fixed cols: 
+        # Project: 12, Status: 10, CPU: 7, Mem: 10 => Total Fixed ~40
+        # Dynamic: Name, Image
+        
+        fixed_width = 12 + 10 + 7 + 10 + 6 # +6 for spaces/bullet
+        rem_width = max(10, w - fixed_width)
+        
+        # Allocate 35% to Name, remainder to Image, but keep min 20 for name
+        w_name = max(20, int(rem_width * 0.35))
+        w_image = max(10, rem_width - w_name - 1)
+        
+        header = f"  {'PROJECT':<12} {'NAME':<{w_name}} {'STATUS':<10} {'CPU':<7} {'MEM':<10} {'IMAGE'}"
+        
     elif tab == "images":
         title, items = " Images ", state.images
-        header = f"  {'SHORT ID':<15} {'SIZE (MB)':<10} {'CREATED':<15} {'TAGS'}"
+        w_id = 15
+        w_size = 10
+        w_created = 15
+        fixed = w_id + w_size + w_created + 5
+        w_tags = max(10, w - fixed)
+        header = f"  {'SHORT ID':<{w_id}} {'SIZE (MB)':<{w_size}} {'CREATED':<{w_created}} {'TAGS'}"
+        
     elif tab == "volumes":
         title, items = " Volumes ", state.volumes
-        header = f"  {'NAME':<30} {'DRIVER':<10} {'MOUNT'}"
+        w_driver = 10
+        rem_w = max(20, w - w_driver - 5)
+        w_name = max(20, int(rem_w * 0.4))
+        # w_mount = rem_w - w_name
+        header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'MOUNT'}"
+        
     elif tab == "networks":
         title, items = " Networks ", state.networks
-        header = f"  {'NAME':<25} {'DRIVER':<10} {'SUBNET'}"
+        w_driver = 10
+        rem_w = max(20, w - w_driver - 5)
+        w_name = max(20, int(rem_w * 0.4))
+        header = f"  {'NAME':<{w_name}} {'DRIVER':<{w_driver}} {'SUBNET'}"
+        
     else: # compose
         title, items = " Compose Projects ", state.composes
-        header = f"  {'NAME':<25} {'STATUS':<15} {'CONFIG FILES'}"
+        w_status = 15
+        rem_w = max(20, w - w_status - 5)
+        w_name = max(20, int(rem_w * 0.4))
+        header = f"  {'NAME':<{w_name}} {'STATUS':<{w_status}} {'CONFIG FILES'}"
 
     # Filtered title
     if state.filter_text:
@@ -112,17 +147,21 @@ def draw_list(win, state: AppState):
             
             win.addstr(start_y + i, 1, f" {status_char} ", s_color | (curses.A_REVERSE if is_selected else 0))
             
-            row_txt = f"{item.project[:11]:<12} {item.name[:19]:<20} {item.status[:9]:<10} {item.cpu_percent:<7} {item.ram_usage:<10} {item.image}"
+            # Use dynamic widths calculated above
+            name_str = item.name[:w_name-1]
+            img_str = item.image[:w_image-1] if 'w_image' in locals() else item.image
+            
+            row_txt = f"{item.project[:11]:<12} {name_str:<{w_name}} {item.status[:9]:<10} {item.cpu_percent:<7} {item.ram_usage:<10} {img_str}"
             win.addstr(start_y + i, 5, row_txt[:w-6], row_style)
         else:
             if tab == "images":
-                line = f"  {item.short_id:<15} {item.size_mb:<10.1f} {item.created:<15} {str(item.tags)}"
+                line = f"  {item.short_id:<15} {item.size_mb:<10.1f} {item.created:<15} {str(item.tags)[:w_tags]}"
             elif tab == "volumes":
-                line = f"  {item.name[:29]:<30} {item.driver:<10} {item.mountpoint}"
+                line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.mountpoint}"
             elif tab == "networks":
-                line = f"  {item.name[:24]:<25} {item.driver:<10} {item.subnet}"
+                line = f"  {item.name[:w_name-1]:<{w_name}} {item.driver:<10} {item.subnet}"
             else: # compose
-                line = f"  {item.name[:24]:<25} {item.status:<15} {item.config_files}"
+                line = f"  {item.name[:w_name-1]:<{w_name}} {item.status:<15} {item.config_files}"
             
             win.addstr(start_y + i, 1, line[:w-2].ljust(w-2), row_style)
 
