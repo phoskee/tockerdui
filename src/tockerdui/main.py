@@ -159,7 +159,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                         backend.compose_remove(project_name)
                     state_mgr.set_message(f"Removed {len(selected_ids)} compose projects")
                     action_taken = True
-
+        
         # --- SINGLE ITEM ACTIONS ---
         else:
             # --- CONTAINER ACTIONS ---
@@ -212,9 +212,9 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                 stdscr.nodelay(True)
                 stdscr.clearok(True)
                 stdscr.refresh()
-         
-        # --- COMMON ---
-        elif key == 'i':
+        
+        # --- COMMON ACTIONS ---
+        if key == 'i':
             curses.def_prog_mode()
             curses.endwin()
             try:
@@ -229,7 +229,8 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
             stdscr.nodelay(True)
             stdscr.clearok(True)
             stdscr.refresh()
-        elif key == 'd':
+            action_taken = True
+        elif key == 'd' and not state.bulk_select_mode:
             if ask_confirmation(stdscr, h//2, w//2, f"Delete {tab[:-1]}?"):
                 if tab == "containers": backend.remove_container(item_id)
                 elif tab == "images": backend.remove_image(item_id)
@@ -251,11 +252,10 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                   stdscr.nodelay(True)
                   stdscr.clearok(True)
                   stdscr.refresh()
-                  # Prune IS an action
                   action_taken = True
          
         # --- IMAGE ACTIONS ---
-        elif key == 'p' and tab == "images":
+        if key == 'p' and tab == "images" and not state.bulk_select_mode:
             img_info = next((i for i in state.images if i.id == item_id), None)
             if img_info and img_info.tags:
                 tag = img_info.tags[0]
@@ -272,16 +272,20 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                     stdscr.nodelay(True)
                     stdscr.clearok(True)
                     stdscr.refresh()
-        elif key == 'R' and tab == "images":
+                    action_taken = True
+        elif key == 'R' and tab == "images" and not state.bulk_select_mode:
             name = prompt_input(stdscr, h // 2, w // 2, "Container Name: ")
             backend.run_container(item_id, name if name else None)
-        elif key == 'S' and tab == "images":
+            action_taken = True
+        elif key == 'S' and tab == "images" and not state.bulk_select_mode:
             path = prompt_input(stdscr, h//2, w//2, "Save to (e.g. image.tar): ")
             if path: backend.save_image(item_id, path)
-        elif key == 'L' and tab == "images":
+            action_taken = True
+        elif key == 'L' and tab == "images" and not state.bulk_select_mode:
             path = prompt_input(stdscr, h//2, w//2, "Load from (e.g. image.tar): ")
             if path: backend.load_image(path)
-        elif key == 'H' and tab == "images":
+            action_taken = True
+        elif key == 'H' and tab == "images" and not state.bulk_select_mode:
             curses.def_prog_mode()
             curses.endwin()
             try:
@@ -292,7 +296,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
             stdscr.nodelay(True)
             stdscr.clearok(True)
             stdscr.refresh()
-        elif key == 'B' and tab == "images":
+        elif key == 'B' and tab == "images" and not state.bulk_select_mode:
             path = prompt_input(stdscr, h//2, w//2, "Path (default .): ")
             if not path: path = "."
             tag = prompt_input(stdscr, h//2, w//2, "Tag (e.g. myimage:latest): ")
@@ -309,30 +313,36 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
                  stdscr.nodelay(True)
                  stdscr.clearok(True)
                  stdscr.refresh()
- 
-        elif key == 'C' and tab == "volumes":
+                 action_taken = True
+        
+        # --- VOLUME ACTIONS ---
+        if key == 'C' and tab == "volumes" and not state.bulk_select_mode:
             name = prompt_input(stdscr, h // 2, w // 2, "Volume Name: ")
             if name: backend.create_volume(name)
+            action_taken = True
          
         # --- COMPOSE ACTIONS ---
-        elif tab == "compose":
-            if item_id:
-                try:
-                    if key == 'U':
-                        backend.compose_up(item_id)
-                        state_mgr.set_message(f"Compose project '{item_id}' is starting...")
-                    elif key == 'D':
-                        backend.compose_down(item_id)
-                        state_mgr.set_message(f"Compose project '{item_id}' is stopping...")
-                    elif key == 'R':
-                        backend.compose_remove(item_id)
-                        state_mgr.set_message(f"Compose project '{item_id}' has been removed...")
-                    elif key == 'P':
-                        backend.compose_pause(item_id)
-                        state_mgr.set_message(f"Compose project '{item_id}' is pausing...")
-                except Exception as e:
-                    state_mgr.set_error(f"Compose action failed: {str(e)}")
-                    logging.error(f"Compose action error: {e}", exc_info=True)
+        if tab == "compose" and not state.bulk_select_mode and item_id:
+            if key == 'U':
+                backend.compose_up(item_id)
+                state_mgr.set_message(f"Compose project '{item_id}' is starting...")
+                action_taken = True
+            elif key == 'D':
+                backend.compose_down(item_id)
+                state_mgr.set_message(f"Compose project '{item_id}' is stopping...")
+                action_taken = True
+            elif key == 'R':
+                backend.compose_remove(item_id)
+                state_mgr.set_message(f"Compose project '{item_id}' has been removed...")
+                action_taken = True
+            elif key == 'P':
+                backend.compose_pause(item_id)
+                state_mgr.set_message(f"Compose project '{item_id}' is pausing...")
+                action_taken = True
+        
+        if action_taken:
+            list_worker.force_refresh()
+            
     except Exception as e:
         logging.error(f"Error in handle_action: {e}", exc_info=True)
         state_mgr.set_message(f"Error: {str(e)}")
@@ -371,23 +381,11 @@ def main(stdscr):
                 current_version = state_mgr.get_version()
                 state_changed = (current_version != last_version)
                 
-                # Check Input (non-blocking if timeout set)
-                # But wait, curses.getch handles timeout internally.
-                # If we put getch AFTER draw, we block there.
-                # If we want to skip drawing, we must know if drawing is needed.
-                
-                # Logic:
-                # 1. If state changed or force_redraw -> Draw -> last_version = current
-                # 2. Call getch (blocks 100ms)
-                # 3. If key -> Handle -> loop (which will likely trigger draw if state changes)
-                # Note: getch DOES NOT trigger state change by itself unless we handle it.
-                
                 if state_changed or force_redraw:
                     state = state_mgr.get_snapshot() # Expensive-ish
                     h, w = stdscr.getmaxyx()
                     
                     if h != last_h or w != last_w:
-                         # ... resize logic ...
                          logging.info(f"Resize: {h}x{w}")
                          stdscr.clear()
                          last_h, last_w = h, w
@@ -540,9 +538,10 @@ def main(stdscr):
                     stdscr.refresh()
                 elif key == ord('/'): state_mgr.set_filtering(True)
                 elif key == 27: state_mgr.set_filter_text("")
-                elif key == ord('s') and state.selected_tab == "containers": backend.start_container(item_id)
+                elif key == ord('s') and state.selected_tab == "containers" and not state.bulk_select_mode: 
+                    backend.start_container(state_mgr.get_selected_item_id())
                 elif key == ord('S'): state_mgr.cycle_sort_mode()
-                elif key == ord('P'): backend.prune_all()
+                elif key == ord('P') and not state.bulk_select_mode: backend.prune_all()
                 
                 elif key in (10, 13): # Enter
                     if state.bulk_select_mode:
@@ -565,15 +564,14 @@ def main(stdscr):
                                 list_worker.force_refresh()
                 
                 else:
+                    # Handle remaining single-key actions for non-bulk mode
                     item_id = state_mgr.get_selected_item_id()
                     if state.selected_tab == "images" and (key == ord('B') or key == ord('L')):
                         handle_action(chr(key), state.selected_tab, None, backend, stdscr, state_mgr, state, list_worker)
                         continue
                     
-                    # Dispatch Actions
-                item_id = state_mgr.get_selected_item_id()
-                if item_id:
-                     handle_action(chr(key) if 32 <= key <= 126 else key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
+                    if item_id and not state.bulk_select_mode:
+                         handle_action(chr(key) if 32 <= key <= 126 else key, state.selected_tab, item_id, backend, stdscr, state_mgr, state, list_worker)
              
             except KeyboardInterrupt:
                 logging.info("KeyboardInterrupt caught, exiting...")
