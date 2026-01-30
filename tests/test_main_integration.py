@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import tockerdui.main as app_main
+from tockerdui.state import ListWorker
 
 def test_main_loop_init(mocker):
     # Mock curses

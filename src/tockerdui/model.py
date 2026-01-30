@@ -1,3 +1,37 @@
+"""
+Data models and structures for tockerdui application state.
+
+This module defines immutable dataclasses (via @dataclass) that represent
+Docker resources and application state. Used throughout the app for:
+  - Type safety and IDE autocomplete
+  - Clear separation of data (models) from logic (backend/ui/state)
+  - Easy serialization/pretty-printing for debugging
+
+Data Classes:
+  - ContainerInfo: Docker container metadata (id, name, status, stats)
+  - ImageInfo: Docker image metadata (id, tags, size, created)
+  - VolumeInfo: Docker volume metadata (name, driver, mount point)
+  - NetworkInfo: Docker network metadata (name, driver, scope, subnets)
+  - ComposeInfo: Docker Compose project metadata (name, status, services)
+  - AppState: Complete application state (all resources + UI selection)
+
+Key Fields:
+  - All *Info dataclasses contain Docker resource identifiers and metadata
+  - Immutable by default (frozen=True), modified via backend operations
+  - Optional fields for data that may not be available
+  - String formatting for CPU/RAM stats ("--" if unavailable)
+
+AppState Structure:
+  - containers: List[ContainerInfo]
+  - images: List[ImageInfo]
+  - volumes: List[VolumeInfo]
+  - networks: List[NetworkInfo]
+  - compose_projects: List[ComposeInfo]
+  - selected_tab, selected_index: UI navigation state
+  - filter_text, show_inspector: UI display state
+  - version: Incremented on state change (for differential rendering)
+"""
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 

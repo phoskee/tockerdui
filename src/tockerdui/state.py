@@ -1,7 +1,44 @@
+"""
+Application state management and background worker threads.
+
+This module provides thread-safe state management and background workers that
+periodically update Docker resource information without blocking the UI.
+
+Architecture:
+  - StateManager: Thread-safe wrapper around AppState with RLock
+  - AppState: Mutable dataclass holding all UI state (containers, images, etc.)
+  - Worker threads: Daemon threads that update state in background
+    - ListWorker: Updates containers/images/volumes/networks (1s interval)
+    - StatsWorker: Updates CPU/RAM statistics (2s interval)
+    - LogsWorker: Streams logs for selected container (0.5s interval)
+
+Thread Safety:
+  - All state access protected by self._lock (RLock for reentrant locking)
+  - Workers never touch curses (only update state dict)
+  - Main thread reads state and renders UI
+  - No blocking operations in workers (all async/non-blocking)
+
+Worker Lifecycle:
+  - Start with start_workers()
+  - Stop with stop_workers() (sets running=False, joins threads)
+  - Clean shutdown on app exit
+
+State Update Pattern:
+  1. Worker calls get_state() to acquire lock
+  2. Modifies state properties
+  3. Releases lock with release_state()
+  4. Main thread detects change and re-renders
+
+Optimization:
+  - Different update intervals (containers 1s, stats 2s, logs 0.5s)
+  - Coarse-grained locking (entire state) vs fine-grained (per-collection)
+"""
+
 import threading
 import time
 from .model import AppState, ContainerInfo
 from .backend import DockerBackend
+
 
 class StateManager:
     """Thread-safe state manager."""

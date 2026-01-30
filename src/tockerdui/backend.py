@@ -1,3 +1,33 @@
+"""
+Docker API wrapper and backend operations.
+
+This module provides a high-level interface to Docker operations via the
+docker-py library. It abstracts Docker API calls and provides methods for:
+  - Fetching and inspecting resources (containers, images, volumes, networks)
+  - Executing container actions (start, stop, restart, pause, shell, logs)
+  - Managing images (run, pull, build, remove)
+  - Managing volumes and networks
+  - Monitoring resource usage (CPU, RAM stats)
+  - Docker Compose project management
+
+All methods follow a fail-safe pattern: exceptions are caught and logged,
+returning empty/default values to prevent UI crashes.
+
+Key Classes:
+  - DockerBackend: Main API wrapper with singleton docker.Client
+
+Error Handling:
+  - Docker connection errors → return empty collections
+  - Permission errors → return empty collections
+  - Invalid container/image IDs → return None or empty
+  - Shell access failures → fallback to sh, then fail gracefully
+
+Dependencies:
+  - docker>=7.0.0 (docker-py client)
+  - subprocess (for git operations, shell exec)
+  - tarfile (for copy_to_container tar stream)
+"""
+
 import docker
 import os
 import tarfile
@@ -7,6 +37,7 @@ import resource
 import platform
 from typing import List, Tuple
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
+
 
 class DockerBackend:
     def __init__(self):
@@ -283,9 +314,6 @@ class DockerBackend:
     def check_for_updates(self) -> bool:
         try:
             source_path = self._get_source_path()
-            with open("/tmp/tockerdui_debug.log", "a") as f:
-                 f.write(f"Source path: {source_path}\n")
-            
             if not source_path: return False
             
             # Fetch remote
@@ -298,14 +326,8 @@ class DockerBackend:
                 cwd=source_path
             )
             count = int(output.decode('utf-8').strip())
-            
-            with open("/tmp/tockerdui_debug.log", "a") as f:
-                 f.write(f"Git count: {count}\n")
-            
             return count > 0
         except Exception as e:
-            with open("/tmp/tockerdui_debug.log", "a") as f:
-                 f.write(f"Update check error: {e}\n")
             return False
 
     def perform_update(self):

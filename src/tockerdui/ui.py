@@ -1,3 +1,47 @@
+"""
+Curses-based Terminal UI rendering engine.
+
+This module handles all terminal rendering via the curses library. It provides:
+  - Color initialization and color pair management
+  - Multi-tab interface rendering
+  - Resource list rendering (containers, images, volumes, networks)
+  - Detail inspector panel (logs, stats, info)
+  - Action menu dialogs
+  - Help and confirmation modals
+
+Rendering Strategy:
+  - Single curses window (stdscr) with regions:
+    - Header: Title + tab bar
+    - Main: List view or inspector
+    - Footer: Status, shortcuts
+  - Differential rendering: only redraw if state changed (via version tracking)
+  - Automatic layout calculation based on terminal size
+
+Color Pairs (initialized in init_colors):
+  1: White (default text)
+  2: Green (running/success/selected)
+  3: Red (error/stopped)
+  4: Cyan (headers/borders)
+
+Key Functions:
+  - init_colors(): Initialize color pairs
+  - draw_ui(): Main rendering dispatcher
+  - draw_header(): Title and tab bar
+  - draw_list(): Resource list with columns (container status, image size, etc.)
+  - draw_inspector(): Detail view for selected item (logs, stats)
+  - draw_*_modal(): Action menus (start/stop/delete/confirm)
+  - draw_footer(): Status and keyboard shortcuts
+
+Dependencies:
+  - curses (Python built-in, terminal mode)
+  - model.py for AppState dataclass
+
+Limitations:
+  - curses not available on Windows (use WSL)
+  - Terminal must be >= 10 lines high (enforced with size checks)
+  - No mouse support (keyboard-only)
+"""
+
 import curses
 from .model import AppState
 

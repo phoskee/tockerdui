@@ -2,16 +2,16 @@
 
 **Last Updated:** 30 Gennaio 2026  
 **Total Effort:** 45-57 hours (4 sprints)  
-**Current Status:** Planning Phase
+**Current Status:** ✅ SPRINT 1 COMPLETATO (6/6 tasks done)
 
 ---
 
 ## 📋 Quick Wins (< 30 min each)
 
-- [ ] **QW1** - Fix syntax error `draw_help_modal()` (5 min) - ui.py:420
-- [ ] **QW2** - Rimuovere debug code `/tmp/tockerdui_debug.log` (5 min) - backend.py
-- [ ] **QW3** - Sincronizzare dipendenze pyproject/requirements (10 min)
-- [ ] **QW4** - Fix import nei test (10 min) - test_main_integration.py
+- [x] **QW1** - Fix syntax error `draw_help_modal()` (5 min) - ui.py:420 ✅
+- [x] **QW2** - Rimuovere debug code `/tmp/tockerdui_debug.log` (5 min) - backend.py ✅
+- [x] **QW3** - Sincronizzare dipendenze pyproject/requirements (10 min) ✅
+- [x] **QW4** - Fix import nei test (10 min) - test_main_integration.py ✅
 
 ---
 
@@ -21,37 +21,37 @@
 
 ### Task
 
-- [ ] **1.1** - Fix syntax error `draw_help_modal()` (5 min)
+- [x] **1.1** - Fix syntax error `draw_help_modal()` (5 min) ✅
   - **File:** `src/tockerdui/ui.py:420`
   - **Descrizione:** Aggiungere `lines = [...]` prima di usare la variabile
   - **Impatto:** Crash UI su tasto `?` → CRASH
   - **Severity:** 🔴 CRITICA
 
-- [ ] **1.2** - Rimuovere duplicati file root (10 min)
+- [x] **1.2** - Rimuovere duplicati file root (10 min) ✅
   - **File:** Root: `main.py`, `backend.py`, `ui.py`, `model.py`, `state.py`
   - **Descrizione:** Eliminare file root (duplicati di src/tockerdui/)
   - **Impatto:** Confusione sulla sorgente della verità
   - **Severity:** 🔴 CRITICA
 
-- [ ] **1.3** - Sincronizzare dipendenze (10 min)
+- [x] **1.3** - Sincronizzare dipendenze (10 min) ✅
   - **File:** `pyproject.toml`, `requirements.txt`
   - **Descrizione:** Rimuovere `requests`, `urllib3` da requirements.txt (non usati nel codice)
   - **Impatto:** Installazione fallisce o inconsistenza
   - **Severity:** 🔴 CRITICA
 
-- [ ] **1.4** - Fix import nei test (10 min)
+- [x] **1.4** - Fix import nei test (10 min) ✅
   - **File:** `tests/test_main_integration.py`
   - **Descrizione:** Cambiare `from tockerdui.main import ListWorker` → `from tockerdui.state import ListWorker`
   - **Impatto:** Test non eseguibili
   - **Severity:** 🔴 CRITICA
 
-- [ ] **1.5** - Rimuovere debug code (5 min)
+- [x] **1.5** - Rimuovere debug code (5 min) ✅
   - **File:** `src/tockerdui/backend.py:272, 278`
   - **Descrizione:** Remove `with open("/tmp/tockerdui_debug.log", "a")` code blocks
   - **Impatto:** Code clutter, log pollution
   - **Severity:** 🟡 MEDIA
 
-- [ ] **1.6** - Aggiungere docstring ai moduli (40 min)
+- [x] **1.6** - Aggiungere docstring ai moduli (40 min) ✅
   - **File:** `src/tockerdui/__init__.py`, `main.py`, `backend.py`, `ui.py`, `state.py`, `model.py`
   - **Descrizione:** Module-level docstring che spiega responsabilità e componenti principali
   - **Impatto:** Documentazione, IDE support
@@ -59,9 +59,9 @@
 
 **Checklist Sprint 1:**
 
-- [ ] Eseguire `pytest` - tutti i test passano
-- [ ] Eseguire `python -m tockerdui --help` - nessun error
-- [ ] Verificare `python -m pip install -e .` funziona
+- [x] Eseguire `pytest` - tutti i test passano ✅
+- [x] Eseguire `python -m tockerdui --help` - nessun error ✅
+- [x] Verificare `python -m pip install -e .` funziona ✅
 
 ---
 
@@ -326,13 +326,13 @@
 
 ## ⏱️ Effort Breakdown
 
-| Sprint                       | Hours           | Status  | Target Date |
-| ---------------------------- | --------------- | ------- | ----------- |
-| Sprint 1 (Stabilità Critica) | 8-10h           | ⏳ TODO | This week   |
-| Sprint 2 (Error Handling)    | 12-15h          | ⏳ TODO | Next week   |
-| Sprint 3 (Testing & Quality) | 10-12h          | ⏳ TODO | Week 3      |
-| Sprint 4 (Features)          | 15-20h          | ⏳ TODO | Week 4-5    |
-| **TOTAL**                    | **45-57 hours** | -       | ~2 months   |
+| Sprint                       | Hours           | Status           | Target Date        |
+| ---------------------------- | --------------- | ---------------- | ----------- |
+| Sprint 1 (Stabilità Critica) | 8-10h           | ✅ COMPLETATO    | ✅ 30 Gen 2026 |
+| Sprint 2 (Error Handling)    | 12-15h          | ⏳ TODO           | Next week   |
+| Sprint 3 (Testing & Quality) | 10-12h          | ⏳ TODO           | Week 3      |
+| Sprint 4 (Features)          | 15-20h          | ⏳ TODO           | Week 4-5    |
+| **TOTAL**                    | **45-57 hours** | -                | ~2 months   |
 
 ---
 

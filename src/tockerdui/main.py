@@ -1,3 +1,32 @@
+"""
+Main UI event loop and orchestration for tockerdui.
+
+This module contains the main application loop that coordinates between:
+  - curses terminal UI (rendering via ui.py)
+  - Docker backend API (docker_backend)
+  - Application state management (state.py with threading workers)
+  - User input handling (keyboard navigation and actions)
+
+Architecture:
+  1. Initialize curses and spawn background workers (ListWorker, StatsWorker, LogsWorker)
+  2. Main loop:
+     - Poll user input (non-blocking getch)
+     - Handle keyboard navigation (tabs, selection, filtering)
+     - Dispatch actions (start/stop/restart containers, etc.)
+     - Re-render UI only on state changes (differential updates)
+  3. Workers periodically update state (containers every 1s, others every 5s)
+  4. UI reads state and renders to terminal (curses)
+
+Key Functions:
+  - main(): Entry point, initializes curses and starts loop
+  - handle_action(): Dispatches keyboard commands to backend
+  - draw_*(): Rendering functions (delegated to ui.py)
+
+Thread Safety:
+  - AppState uses locks for concurrent access from main thread + workers
+  - No curses calls from worker threads (only in main thread)
+"""
+
 import curses
 import time
 import subprocess
@@ -7,6 +36,7 @@ import logging
 # Setup logging
 logging.basicConfig(filename='/tmp/tockerdui.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 from .backend import DockerBackend
 from .state import StateManager, ListWorker, LogsWorker, StatsWorker
