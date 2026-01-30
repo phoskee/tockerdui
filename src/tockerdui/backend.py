@@ -3,6 +3,8 @@ import os
 import tarfile
 import io
 import subprocess
+import resource
+import platform
 from typing import List, Tuple
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
 
@@ -36,17 +38,25 @@ class DockerBackend:
     def get_self_usage(self) -> str:
         try:
             pid = os.getpid()
-            # ps -p PID -o %cpu,rss
-            cmd = ["ps", "-p", str(pid), "-o", "%cpu,rss"]
+            
+            # MEMORY: Use resource module (more accurate than ps)
+            # MacOS returns bytes, Linux returns KB
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            rss_val = usage.ru_maxrss
+            if platform.system() == 'Darwin':
+                rss_mb = rss_val / (1024 * 1024)
+            else:
+                rss_mb = rss_val / 1024
+            
+            # CPU: Use ps (best option without psutil)
+            cmd = ["ps", "-p", str(pid), "-o", "%cpu"]
+            # Output: %CPU \n 0.0
             output = subprocess.check_output(cmd).decode().strip().splitlines()
+            cpu = "?"
             if len(output) >= 2:
-                vals = output[1].strip().split()
-                if len(vals) >= 2:
-                    cpu = vals[0]
-                    rss_kb = int(vals[1])
-                    rss_mb = rss_kb / 1024
-                    return f"CPU: {cpu}% MEM: {rss_mb:.0f}MB"
-            return ""
+                cpu = output[1].strip().replace(',', '.') # Handle 0,0
+            
+            return f"CPU: {cpu}% MEM: {rss_mb:.1f}MB"
         except Exception:
             return ""
 
