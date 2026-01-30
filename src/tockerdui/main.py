@@ -252,7 +252,8 @@ def main(stdscr):
                     state_mgr.move_selection(1, page_height)
                 elif key == ord('/'): state_mgr.set_filtering(True)
                 elif key == 27: state_mgr.set_filter_text("")
-                elif key == ord('S') and state.selected_tab == "containers": state_mgr.cycle_sort_mode()
+                elif key == ord('s') and state.selected_tab == "containers": backend.start_container(item_id)
+                elif key == ord('S'): state_mgr.cycle_sort_mode()
                 elif key == ord('P'): backend.prune_all()
                 
                 elif key in (10, 13): # Enter

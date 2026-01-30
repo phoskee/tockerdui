@@ -180,21 +180,41 @@ def prompt_input(stdscr, cy, cx, prompt):
     box_w = 60
     box_h = 3
     win = curses.newwin(box_h, box_w, cy - 1, cx - box_w//2)
+    win.keypad(True)
     win.attron(curses.color_pair(4))
     win.box()
     win.attroff(curses.color_pair(4))
     win.addstr(1, 2, prompt, curses.A_BOLD)
     win.refresh()
-    curses.echo()
-    curses.curs_set(1)
-    try:
-        inp_bytes = win.getstr(1, 2 + len(prompt))
-        inp = inp_bytes.decode('utf-8').strip()
-    except Exception:
-        inp = ""
+    
+    text = ""
     curses.noecho()
-    curses.curs_set(0)
-    return inp
+    curses.curs_set(1)
+    
+    while True:
+        # Redraw
+        win.erase()
+        win.attron(curses.color_pair(4))
+        win.box()
+        win.attroff(curses.color_pair(4))
+        win.addstr(1, 2, prompt + text)
+        win.refresh()
+        
+        ch = win.getch()
+        
+        if ch == 27: # ESC
+            curses.curs_set(0)
+            return None
+        elif ch in (10, 13): # Enter
+            curses.curs_set(0)
+            return text.strip()
+        elif ch in (curses.KEY_BACKSPACE, 127):
+            text = text[:-1]
+        elif 32 <= ch <= 126:
+            if len(prompt) + len(text) < box_w - 4:
+                text += chr(ch)
+    
+    return None
 
 def action_menu(stdscr, cy, cx, tab, item_id):
     actions = []
