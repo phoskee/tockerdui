@@ -19,10 +19,27 @@ fi
 if ! python3 -m ensurepip --version &> /dev/null; then
     echo "❌ Error: 'ensurepip' is missing."
     echo "Python requires 'python3-venv' to create virtual environments."
-    echo "Please run:"
-    echo "  sudo apt install python3-venv"
-    echo "  (or sudo apt install python3.12-venv depending on your version)"
-    exit 1
+    
+    if command -v apt &> /dev/null; then
+        echo ""
+        read -p "Would you like to try installing 'python3-venv' now? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "🔑 Sudo password might be required."
+            if sudo apt update && sudo apt install -y python3-venv; then
+                echo "✅ Package installed."
+            else
+                echo "❌ Installation failed. Please install manually."
+                exit 1
+            fi
+        else
+            echo "Installation aborted by user."
+            exit 1
+        fi
+    else
+        echo "Please install 'python3-venv' for your distribution manually."
+        exit 1
+    fi
 fi
 
 echo "📦 Creating directories..."
