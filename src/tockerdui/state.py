@@ -8,6 +8,14 @@ class StateManager:
     def __init__(self):
         self._state = AppState()
         self._lock = threading.Lock()
+        self._version = 0
+    
+    def get_version(self):
+        with self._lock: return self._version
+
+    def _inc_version(self):
+        # Assumes lock is held
+        self._version += 1
     
     def update_containers(self, containers):
         with self._lock: 
@@ -16,6 +24,7 @@ class StateManager:
                 if c.id in stats_map:
                     c.cpu_percent, c.ram_usage = stats_map[c.id]
             self._state.containers = containers
+            self._inc_version()
     
     def update_container_stats(self, container_id, cpu, ram):
         with self._lock:
@@ -23,26 +32,38 @@ class StateManager:
                 if c.id == container_id:
                     c.cpu_percent = cpu
                     c.ram_usage = ram
+                    self._inc_version()
                     break
 
     def update_images(self, images):
-        with self._lock: self._state.images = images
+        with self._lock: 
+            self._state.images = images
+            self._inc_version()
 
     def update_volumes(self, volumes):
-        with self._lock: self._state.volumes = volumes
+        with self._lock: 
+            self._state.volumes = volumes
+            self._inc_version()
 
     def update_networks(self, networks):
-        with self._lock: self._state.networks = networks
+        with self._lock: 
+            self._state.networks = networks
+            self._inc_version()
     
     def update_composes(self, composes):
-        with self._lock: self._state.composes = composes
+        with self._lock: 
+            self._state.composes = composes
+            self._inc_version()
 
     def set_logs(self, logs):
-        with self._lock: self._state.logs = logs
+        with self._lock: 
+            self._state.logs = logs
+            self._inc_version()
 
     def set_message(self, message: str):
         with self._lock:
             self._state.message = message
+            self._inc_version()
 
     def set_tab(self, tab):
         with self._lock:
@@ -55,6 +76,7 @@ class StateManager:
             self._state.message = "" # Clear message on tab switch
             self._state.focused_pane = "list"
             self._state.logs_scroll_offset = 999999 # Auto-scroll to bottom
+            self._inc_version()
 
     def toggle_focus(self):
         with self._lock:
@@ -62,6 +84,7 @@ class StateManager:
                 self._state.focused_pane = "details"
             else:
                 self._state.focused_pane = "list"
+            self._inc_version()
 
     def scroll_logs(self, delta, page_height):
         with self._lock:
@@ -82,14 +105,17 @@ class StateManager:
             max_offset = max(0, len(self._state.logs) - page_height + 1)
             
             self._state.logs_scroll_offset = max(0, min(new_offset, max_offset))
+            self._inc_version()
 
     def set_filtering(self, active: bool):
         with self._lock:
             self._state.is_filtering = active
+            self._inc_version()
 
     def set_filter_text(self, text: str):
         with self._lock:
             self._state.filter_text = text
+            self._inc_version()
             current_list = self._get_filtered_list_unlocked(self._state.selected_tab)
             if self._state.selected_index >= len(current_list):
                  self._state.selected_index = max(0, len(current_list) - 1)
@@ -102,6 +128,7 @@ class StateManager:
                 self._state.sort_mode = modes[(idx + 1) % len(modes)]
             except ValueError:
                 self._state.sort_mode = "name"
+            self._inc_version()
 
     def _get_filtered_list_unlocked(self, tab):
         items = []
@@ -167,6 +194,7 @@ class StateManager:
                 # If selection actually changed
                 if new_idx != self._state.selected_index:
                     self._state.selected_index = new_idx
+                    self._inc_version() # Only if changed
                     # Clear logs on selection change for containers
                     if self._state.selected_tab == "containers":
                         self._state.logs = ["Loading..."]
@@ -177,6 +205,7 @@ class StateManager:
                             self._state.scroll_offset = self._state.selected_index
                         elif self._state.selected_index >= self._state.scroll_offset + page_height:
                             self._state.scroll_offset = self._state.selected_index - page_height + 1
+                    self._inc_version() # Also if scroll changed
             else:
                  self._state.selected_index = 0
 
@@ -211,10 +240,12 @@ class StateManager:
     def update_self_usage(self, usage: str):
         with self._lock:
             self._state.self_usage = usage
+            self._inc_version()
 
     def set_update_available(self, available: bool):
         with self._lock:
             self._state.update_available = available
+            self._inc_version()
 
     def get_selected_item_id(self):
         with self._lock:

@@ -190,44 +190,65 @@ def main(stdscr):
 
         list_win = None
         detail_win = None
-        last_h, last_w = -1, -1
+        last_version = -1
+        force_redraw = True
 
         while True:
             try:
-                state = state_mgr.get_snapshot()
-                h, w = stdscr.getmaxyx()
+                # Check for state changes (cheap)
+                current_version = state_mgr.get_version()
+                state_changed = (current_version != last_version)
                 
-                if h != last_h or w != last_w:
-                    logging.info(f"Resize or init: {h}x{w}")
-                    stdscr.clear()
-                    last_h, last_w = h, w
-                    split_y = int(h * 0.6)
+                # Check Input (non-blocking if timeout set)
+                # But wait, curses.getch handles timeout internally.
+                # If we put getch AFTER draw, we block there.
+                # If we want to skip drawing, we must know if drawing is needed.
+                
+                # Logic:
+                # 1. If state changed or force_redraw -> Draw -> last_version = current
+                # 2. Call getch (blocks 100ms)
+                # 3. If key -> Handle -> loop (which will likely trigger draw if state changes)
+                # Note: getch DOES NOT trigger state change by itself unless we handle it.
+                
+                if state_changed or force_redraw:
+                    state = state_mgr.get_snapshot() # Expensive-ish
+                    h, w = stdscr.getmaxyx()
                     
-                    if h < 10 or w < 20:
-                        stdscr.addstr(0, 0, "Terminal too small!")
-                        list_win = None
-                        detail_win = None
-                    else:
-                        list_win_h = split_y - 2
-                        if list_win_h > 0:
-                            list_win = curses.newwin(list_win_h, w, 2, 0)
-                        
-                        detail_win_h = h - split_y - 1
-                        if detail_win_h > 0:
-                            detail_win = curses.newwin(detail_win_h, w, split_y, 0)
-
-                # Draw components
-                draw_header(stdscr, w, state.selected_tab)
-                draw_footer(stdscr, w, h, state)
-                if list_win: draw_list(list_win, state)
-                if detail_win: draw_details(detail_win, state)
-                
-                curses.doupdate()
+                    if h != last_h or w != last_w:
+                         # ... resize logic ...
+                         logging.info(f"Resize: {h}x{w}")
+                         stdscr.clear()
+                         last_h, last_w = h, w
+                         split_y = int(h * 0.6)
+                         
+                         if h < 10 or w < 20:
+                             stdscr.addstr(0, 0, "Terminal too small!")
+                             list_win = None
+                             detail_win = None
+                         else:
+                             list_win_h = split_y - 2
+                             if list_win_h > 0:
+                                 list_win = curses.newwin(list_win_h, w, 2, 0)
+                             
+                             detail_win_h = h - split_y - 1
+                             if detail_win_h > 0:
+                                 detail_win = curses.newwin(detail_win_h, w, split_y, 0)
+                    
+                    # Draw components
+                    draw_header(stdscr, w, state.selected_tab)
+                    draw_footer(stdscr, w, h, state)
+                    if list_win: draw_list(list_win, state)
+                    if detail_win: draw_details(detail_win, state)
+                    
+                    curses.doupdate()
+                    last_version = current_version
+                    force_redraw = False
 
                 key = stdscr.getch()
                 if key == curses.ERR: continue
                 
-                # Global/High Priority Keys
+                force_redraw = True # Input implies we might want immediate feedback or just checking
+
                 if key == ord('q') and not state.is_filtering:
                     logging.info("Quitting")
                     list_worker.running = False
