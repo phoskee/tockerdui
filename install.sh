@@ -15,11 +15,13 @@ if ! command -v python3 &> /dev/null;
     exit 1
 fi
 
-# Check for venv module
-if ! python3 -m venv --help &> /dev/null;
-    then
-    echo "❌ Error: python3-venv is missing."
-    echo "Please install it: sudo apt install python3-venv (on Debian/Ubuntu)"
+# Check for venv/ensurepip
+if ! python3 -m ensurepip --version &> /dev/null; then
+    echo "❌ Error: 'ensurepip' is missing."
+    echo "Python requires 'python3-venv' to create virtual environments."
+    echo "Please run:"
+    echo "  sudo apt install python3-venv"
+    echo "  (or sudo apt install python3.12-venv depending on your version)"
     exit 1
 fi
 
@@ -35,7 +37,11 @@ cp requirements.txt "$INSTALL_DIR/tockerdui/"
 rm -rf "$INSTALL_DIR/tockerdui/.git" "$INSTALL_DIR/tockerdui/venv"
 
 echo "🔧 Creating isolated virtual environment..."
-python3 -m venv "$INSTALL_DIR/venv"
+if ! python3 -m venv "$INSTALL_DIR/venv"; then
+    echo "❌ Error: Failed to create virtual environment."
+    echo "Try installing venv: sudo apt install python3-venv"
+    exit 1
+fi
 
 echo "📥 Installing dependencies (this may take a minute)...
 "$INSTALL_DIR"/venv/bin/pip" install --upgrade pip --quiet
