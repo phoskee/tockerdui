@@ -122,26 +122,49 @@ def handle_volume_action(key: str, item_id: Optional[str], backend: DockerBacken
     return action_taken
 
 def handle_compose_action(key: str, item_id: str, backend: DockerBackend,
-                        stdscr, state_mgr: StateManager) -> bool:
+                        stdscr, state_mgr: StateManager, state) -> bool:
     """Handle actions for compose projects."""
     if not item_id: return False
     
     action_taken = False
+    comp_info = next((c for c in state.composes if c.name == item_id), None)
+    config_files = comp_info.config_files if comp_info else ""
+
     if key == 'U':
-        backend.compose_up(item_id)
-        state_mgr.set_message(f"Compose project '{item_id}' is starting...")
+        result = backend.compose_up(item_id, config_files)
+        if result is None:
+            state_mgr.set_message(f"Compose up failed for '{item_id}'")
+        else:
+            ok, msg = result
+            message = msg if msg else (f"Compose project '{item_id}' is starting..." if ok else f"Compose up failed for '{item_id}'")
+            state_mgr.set_message(message)
         action_taken = True
     elif key == 'D':
-        backend.compose_down(item_id)
-        state_mgr.set_message(f"Compose project '{item_id}' is stopping...")
+        result = backend.compose_down(item_id, config_files)
+        if result is None:
+            state_mgr.set_message(f"Compose down failed for '{item_id}'")
+        else:
+            ok, msg = result
+            message = msg if msg else (f"Compose project '{item_id}' is stopping..." if ok else f"Compose down failed for '{item_id}'")
+            state_mgr.set_message(message)
         action_taken = True
     elif key == 'R':
-        backend.compose_remove(item_id)
-        state_mgr.set_message(f"Compose project '{item_id}' has been removed...")
+        result = backend.compose_remove(item_id, config_files)
+        if result is None:
+            state_mgr.set_message(f"Compose remove failed for '{item_id}'")
+        else:
+            ok, msg = result
+            message = msg if msg else (f"Compose project '{item_id}' has been removed..." if ok else f"Compose remove failed for '{item_id}'")
+            state_mgr.set_message(message)
         action_taken = True
     elif key == 'P':
-        backend.compose_pause(item_id)
-        state_mgr.set_message(f"Compose project '{item_id}' is pausing...")
+        result = backend.compose_pause(item_id, config_files)
+        if result is None:
+            state_mgr.set_message(f"Compose pause failed for '{item_id}'")
+        else:
+            ok, msg = result
+            message = msg if msg else (f"Compose project '{item_id}' is pausing..." if ok else f"Compose pause failed for '{item_id}'")
+            state_mgr.set_message(message)
         action_taken = True
         
     return action_taken
@@ -154,7 +177,7 @@ def handle_network_action(key: str, item_id: str, backend: DockerBackend,
     return False
 
 def handle_common_action(key: str, tab: str, item_id: str, backend: DockerBackend,
-                       stdscr, state_mgr: StateManager) -> bool:
+                       stdscr, state_mgr: StateManager, confirm_fn=ask_confirmation) -> bool:
     """Handle common actions like inspect, delete, prune."""
     h, w = stdscr.getmaxyx()
     action_taken = False
@@ -168,7 +191,7 @@ def handle_common_action(key: str, tab: str, item_id: str, backend: DockerBacken
         action_taken = True
         
     elif key == 'd':
-        if ask_confirmation(stdscr, h//2, w//2, f"Delete {tab[:-1]}?"):
+        if confirm_fn(stdscr, h//2, w//2, f"Delete {tab[:-1]}?"):
             if tab == "containers": backend.remove_container(item_id)
             elif tab == "images": backend.remove_image(item_id)
             elif tab == "volumes": backend.remove_volume(item_id)
@@ -176,7 +199,7 @@ def handle_common_action(key: str, tab: str, item_id: str, backend: DockerBacken
             action_taken = True
             
     elif key == 'P':
-         if ask_confirmation(stdscr, h//2, w//2, "Prune system (all unused)?"):
+         if confirm_fn(stdscr, h//2, w//2, "Prune system (all unused)?"):
               _run_shell_cmd_wait(stdscr, None, custom_func=lambda: backend.prune_all(), msg="Pruning system...")
               action_taken = True
               

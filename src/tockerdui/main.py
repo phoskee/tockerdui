@@ -64,7 +64,7 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
             # Delegate directly to bulk handler for shortcuts like 's', 'd', 'r'
             # Only if items are selected
             if selected_ids:
-                action_taken = handle_bulk_action(key, tab, selected_ids, backend, stdscr, state_mgr)
+                action_taken = handle_bulk_action(key, tab, selected_ids, backend, stdscr, state_mgr, state)
             else:
                 if key in ('s', 'd', 'r', 'p', 't', 'U', 'D'):
                     state_mgr.set_message("No items selected")
@@ -80,11 +80,11 @@ def handle_action(key: str, tab: str, item_id: Optional[str], backend: 'DockerBa
             elif tab == "volumes":
                 action_taken = handle_volume_action(key, item_id, backend, stdscr, state_mgr)
             elif tab == "compose" and item_id:
-                action_taken = handle_compose_action(key, item_id, backend, stdscr, state_mgr)
+                action_taken = handle_compose_action(key, item_id, backend, stdscr, state_mgr, state)
             
             # Common actions (inspect, delete single item)
             if not action_taken and item_id:
-                action_taken = handle_common_action(key, tab, item_id, backend, stdscr, state_mgr)
+                action_taken = handle_common_action(key, tab, item_id, backend, stdscr, state_mgr, confirm_fn=ask_confirmation)
             
             # Special case for network (didn't make a dedicated handler as it only has delete/inspect which are common)
             # Actually I added handle_network_action but it was empty in my thought process? 
@@ -326,7 +326,7 @@ def main(stdscr):
                         stdscr.clearok(True)
                         stdscr.refresh()
                         if action_key:
-                            action_taken = handle_bulk_action(action_key, state.selected_tab, selected_ids, backend, stdscr, state_mgr)
+                            action_taken = handle_bulk_action(action_key, state.selected_tab, selected_ids, backend, stdscr, state_mgr, state)
                             if action_taken:
                                 list_worker.force_refresh()
                     else:

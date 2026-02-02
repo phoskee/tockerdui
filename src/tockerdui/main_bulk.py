@@ -10,7 +10,7 @@ from typing import Optional, List
 from .ui import ask_confirmation, prompt_input
 
 def handle_bulk_action(key: str, tab: str, selected_ids: List[str], backend, 
-                     stdscr, state_mgr) -> bool:
+                     stdscr, state_mgr, state) -> bool:
     """Handle bulk actions for selected items.
     
     Args:
@@ -119,7 +119,8 @@ def handle_bulk_action(key: str, tab: str, selected_ids: List[str], backend,
         if key == 'U':
             # Up all selected compose projects
             for project_name in selected_ids:
-                backend.compose_up(project_name)
+                config_files = _get_compose_config_files(state, project_name)
+                backend.compose_up(project_name, config_files)
             state_mgr.set_message(f"Started {len(selected_ids)} compose projects")
             action_taken = True
             
@@ -127,7 +128,8 @@ def handle_bulk_action(key: str, tab: str, selected_ids: List[str], backend,
             # Down all selected compose projects
             if ask_confirmation(stdscr, h//2, w//2, f"Stop {len(selected_ids)} compose projects?"):
                 for project_name in selected_ids:
-                    backend.compose_down(project_name)
+                    config_files = _get_compose_config_files(state, project_name)
+                    backend.compose_down(project_name, config_files)
                 state_mgr.set_message(f"Stopped {len(selected_ids)} compose projects")
                 action_taken = True
                 
@@ -135,8 +137,13 @@ def handle_bulk_action(key: str, tab: str, selected_ids: List[str], backend,
             # Remove all selected compose projects
             if ask_confirmation(stdscr, h//2, w//2, f"Remove {len(selected_ids)} compose projects?"):
                 for project_name in selected_ids:
-                    backend.compose_remove(project_name)
+                    config_files = _get_compose_config_files(state, project_name)
+                    backend.compose_remove(project_name, config_files)
                 state_mgr.set_message(f"Removed {len(selected_ids)} compose projects")
                 action_taken = True
     
     return action_taken
+
+def _get_compose_config_files(state, project_name: str) -> str:
+    comp_info = next((c for c in state.composes if c.name == project_name), None)
+    return comp_info.config_files if comp_info else ""

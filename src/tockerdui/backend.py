@@ -287,6 +287,8 @@ class DockerBackend:
             logging.warning(f"Rejected copy attempt with path traversal: {src_path}")
             return
         
+        src_path = os.path.abspath(os.path.expanduser(src_path))
+        
         # Validate that source file exists
         if not os.path.exists(src_path):
             logging.warning(f"Source path does not exist: {src_path}")
@@ -386,6 +388,25 @@ class DockerBackend:
         except Exception:
             return None
 
+    def _parse_compose_files(self, config_files: str) -> List[str]:
+        if not config_files or config_files == "n/a":
+            return []
+        parts = [p.strip() for p in config_files.split(",") if p.strip()]
+        return parts
+
+    def _build_compose_command(self, project_name: str, config_files: str, args: List[str]) -> Tuple[List[str], str]:
+        cmd = ["docker", "compose", "-p", project_name]
+        files = self._parse_compose_files(config_files)
+        for path in files:
+            cmd.extend(["-f", path])
+        cmd.extend(args)
+        cwd = None
+        if files:
+            first_dir = os.path.dirname(files[0])
+            if first_dir and os.path.isdir(first_dir):
+                cwd = first_dir
+        return cmd, cwd
+
     def check_for_updates(self) -> bool:
         try:
             source_path = self._get_source_path()
@@ -407,45 +428,57 @@ class DockerBackend:
 
     # --- COMPOSE ACTIONS ---
     
-    @docker_safe(default_return=None)
-    def compose_up(self, project_name: str) -> None:
+    def compose_up(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Start services for a Docker Compose project."""
-        subprocess.run(
-            ["docker", "compose", "-p", project_name, "up", "-d"],
-            check=True,
-            capture_output=True
-        )
-        logging.info(f"Compose project '{project_name}' started successfully")
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["up", "-d"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose up failed").strip()
+            logging.info(f"Compose project '{project_name}' started successfully")
+            return True, (result.stdout or "Compose started").strip()
+        except Exception as e:
+            logger.error(f"Compose up failed: {e}", exc_info=True)
+            return None
     
-    @docker_safe(default_return=None)
-    def compose_down(self, project_name: str) -> None:
+    def compose_down(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Stop and remove services for a Docker Compose project."""
-        subprocess.run(
-            ["docker", "compose", "-p", project_name, "down"],
-            check=True,
-            capture_output=True
-        )
-        logging.info(f"Compose project '{project_name}' stopped successfully")
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["down"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose down failed").strip()
+            logging.info(f"Compose project '{project_name}' stopped successfully")
+            return True, (result.stdout or "Compose stopped").strip()
+        except Exception as e:
+            logger.error(f"Compose down failed: {e}", exc_info=True)
+            return None
     
-    @docker_safe(default_return=None)
-    def compose_remove(self, project_name: str) -> None:
+    def compose_remove(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Remove services, volumes, and networks for a Docker Compose project."""
-        subprocess.run(
-            ["docker", "compose", "-p", project_name, "down", "-v"],
-            check=True,
-            capture_output=True
-        )
-        logging.info(f"Compose project '{project_name}' removed successfully")
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["down", "-v"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose remove failed").strip()
+            logging.info(f"Compose project '{project_name}' removed successfully")
+            return True, (result.stdout or "Compose removed").strip()
+        except Exception as e:
+            logger.error(f"Compose remove failed: {e}", exc_info=True)
+            return None
     
-    @docker_safe(default_return=None)
-    def compose_pause(self, project_name: str) -> None:
+    def compose_pause(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Pause services for a Docker Compose project."""
-        subprocess.run(
-            ["docker", "compose", "-p", project_name, "pause"],
-            check=True,
-            capture_output=True
-        )
-        logging.info(f"Compose project '{project_name}' paused successfully")
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["pause"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose pause failed").strip()
+            logging.info(f"Compose project '{project_name}' paused successfully")
+            return True, (result.stdout or "Compose paused").strip()
+        except Exception as e:
+            logger.error(f"Compose pause failed: {e}", exc_info=True)
+            return None
 
     def perform_update(self):
         try:

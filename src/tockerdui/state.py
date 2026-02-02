@@ -373,6 +373,11 @@ class StateManager:
                 logs_scroll_offset=self._state.logs_scroll_offset,
                 self_usage=self._state.self_usage
             )
+
+    def get_all_containers(self) -> List[ContainerInfo]:
+        """Return a copy of all containers without filter/sort applied."""
+        with self._lock:
+            return list(self._state.containers)
     
     def update_self_usage(self, usage: str):
         with self._lock:
@@ -411,48 +416,52 @@ class ListWorker(threading.Thread):
     def run(self) -> None:
         import logging
         logger = logging.getLogger(__name__)
-        counter = 0
+        last_containers = 0.0
+        last_others = 0.0
+        last_cleanup = 0.0
+        container_interval = 1.0
+        others_interval = 5.0
+        cleanup_interval = 30.0
         # Check updates once at startup
         if self.backend.check_for_updates():
             self.state_manager.set_update_available(True)
-
-        # Cache cleanup interval (every 30 seconds = 60 iterations)
-        cleanup_counter = 0
 
         while self.running:
             try:
                 # Force refresh logic
                 if self._force_refresh_flag:
-                    counter = 0
+                    last_containers = 0.0
+                    last_others = 0.0
+                    last_cleanup = 0.0
                     self._force_refresh_flag = False
-                
-                # Interval 0.5s
-                
-                # 2 loops = 1.0s interval for containers (approx)
-                if counter % 2 == 0:
+
+                now = time.monotonic()
+
+                # Containers: refresh frequently
+                if now - last_containers >= container_interval:
                     containers = self.backend.get_containers()
                     self.state_manager.update_containers(containers)
+                    last_containers = now
                 
-                # 10 loops = 5.0s interval for others
-                if counter % 10 == 0:
+                # Other resources: refresh less frequently
+                if now - last_others >= others_interval:
                     self.state_manager.update_images(self.backend.get_images())
                     self.state_manager.update_volumes(self.backend.get_volumes())
                     self.state_manager.update_networks(self.backend.get_networks())
                     self.state_manager.update_composes(self.backend.get_composes())
+                    last_others = now
                 
                 # Periodic cache cleanup
-                cleanup_counter += 1
-                if cleanup_counter >= 60:  # Every 30 seconds
+                if now - last_cleanup >= cleanup_interval:
                     from .cache import cache_manager
                     cache_manager.cleanup_expired()
-                    cleanup_counter = 0
+                    last_cleanup = now
                     
             except Exception as e:
                 logger.error(f"ListWorker error: {e}", exc_info=True)
                 time.sleep(2.0)
-            
-            counter += 1
-            time.sleep(1.0)  # Reduced polling frequency
+
+            time.sleep(0.2)
 
 class LogsWorker(threading.Thread):
     def __init__(self, state_manager: StateManager, backend: DockerBackend):
@@ -555,8 +564,8 @@ class StatsWorker(threading.Thread):
                 # Update self usage
                 self.state_manager.update_self_usage(self.backend.get_self_usage())
                 
-                snapshot = self.state_manager.get_snapshot()
-                running_containers = [c for c in snapshot.containers if c.status == "running"]
+                all_containers = self.state_manager.get_all_containers()
+                running_containers = [c for c in all_containers if c.status == "running"]
                 
                 for c in running_containers:
                     if not self.running: break

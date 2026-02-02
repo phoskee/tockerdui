@@ -498,7 +498,10 @@ def prompt_input(stdscr, cy, cx, prompt):
     return None
 
 def ask_confirmation(stdscr, cy, cx, question: str) -> bool:
-    max_h, max_w = stdscr.getmaxyx()
+    try:
+        max_h, max_w = stdscr.getmaxyx()
+    except Exception:
+        max_h, max_w = 24, 80
     msg = f" {question} (Y/n) "
     
     width = min(max(30, len(msg) + 4), max_w - 2)
@@ -512,9 +515,10 @@ def ask_confirmation(stdscr, cy, cx, question: str) -> bool:
     win.box()
     win.attroff(curses.color_pair(3))
     
-    # Center message safely
-    trunc_msg = msg if len(msg) < width - 2 else msg[:width-5] + "..."
-    win.addstr(1, max(1, (width - len(trunc_msg)) // 2), trunc_msg, curses.A_BOLD)
+    # Center message safely within content area
+    content_w = max(1, width - 2)
+    trunc_msg = msg if len(msg) <= content_w else msg[:max(0, content_w - 3)] + "..."
+    win.addstr(1, 1, trunc_msg.center(content_w), curses.A_BOLD)
     
     selected = True # Yes by default
     
