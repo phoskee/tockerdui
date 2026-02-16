@@ -74,3 +74,16 @@ def test_textual_space_binding_for_selection():
     app = TockerTextualApp()
     keys = [binding.key for binding in app.BINDINGS]
     assert "space" in keys
+
+
+def test_filter_mode_blocks_action_bindings():
+    app = TockerTextualApp()
+    app.is_filtering = True
+    assert app.check_action("tab_images", ()) is False
+    assert app.check_action("quit", ()) is False
+
+
+def test_non_filter_mode_allows_action_bindings():
+    app = TockerTextualApp()
+    app.is_filtering = False
+    assert app.check_action("tab_images", ()) is True

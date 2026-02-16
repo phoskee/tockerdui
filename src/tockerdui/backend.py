@@ -33,11 +33,12 @@ import os
 import tarfile
 import io
 import subprocess
+import yaml
 import resource
 import platform
 import logging
 import functools
-from typing import List, Tuple, Any, Callable
+from typing import Dict, List, Tuple, Any, Callable, Optional
 from .model import ContainerInfo, ImageInfo, VolumeInfo, NetworkInfo, ComposeInfo
 from .cache import cached, cache_manager, cache_with_ttl
 
@@ -200,22 +201,105 @@ class DockerBackend:
     @docker_safe(default_return=[])
     @cached(key_prefix="composes")
     def get_composes(self) -> List[ComposeInfo]:
-        if not self.client: return []
-        containers = self.client.containers.list(all=True)
-        projects = {}
+        containers = []
+        if self.client:
+            containers = self.client.containers.list(all=True)
+
+        projects: Dict[str, Dict[str, Any]] = {}
         for c in containers:
             p_name = c.labels.get('com.docker.compose.project')
             if p_name:
                 if p_name not in projects:
                     projects[p_name] = {"files": c.labels.get('com.docker.compose.project.config_files', 'n/a'), "statuses": []}
                 projects[p_name]["statuses"].append(c.status)
-        res = []
+
+        # Merge discovered compose files from filesystem to keep "down" stacks visible.
+        discovered = self._discover_compose_projects()
+        for name, file_path in discovered.items():
+            if name not in projects:
+                projects[name] = {"files": file_path, "statuses": []}
+            elif projects[name].get("files") in ("", "n/a"):
+                projects[name]["files"] = file_path
+
+        res: List[ComposeInfo] = []
         for name, data in projects.items():
             stats = set(data["statuses"])
-            if len(stats) == 1: status = stats.pop()
-            else: status = "mixed"
+            if not stats:
+                status = "inactive"
+            elif len(stats) == 1:
+                status = stats.pop()
+            else:
+                status = "mixed"
             res.append(ComposeInfo(name=name, config_files=data["files"], status=status))
+        res.sort(key=lambda c: c.name.lower())
         return res
+
+    def _get_compose_search_paths(self) -> List[str]:
+        """Get paths where compose files are discovered."""
+        env_paths = os.environ.get("TOCKERDUI_COMPOSE_PATHS", "").strip()
+        if env_paths:
+            paths = [p for p in env_paths.split(os.pathsep) if p]
+        else:
+            paths = [os.getcwd()]
+        return [os.path.abspath(os.path.expanduser(p)) for p in paths if os.path.isdir(os.path.abspath(os.path.expanduser(p)))]
+
+    def _compose_project_name_from_file(self, compose_file: str) -> str:
+        """Resolve project name from compose file `name:` or parent folder."""
+        try:
+            with open(compose_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if isinstance(data, dict):
+                declared = data.get("name")
+                if isinstance(declared, str) and declared.strip():
+                    return declared.strip()
+        except Exception:
+            pass
+        return os.path.basename(os.path.dirname(compose_file))
+
+    def _discover_compose_projects(self, max_depth: int = 4) -> Dict[str, str]:
+        """Discover compose projects from filesystem."""
+        compose_names = {
+            "docker-compose.yml",
+            "docker-compose.yaml",
+            "compose.yml",
+            "compose.yaml",
+        }
+        skip_dirs = {
+            ".git",
+            ".venv",
+            "venv",
+            "node_modules",
+            "__pycache__",
+            ".idea",
+            ".vscode",
+        }
+
+        discovered: Dict[str, str] = {}
+        for root in self._get_compose_search_paths():
+            for dirpath, dirnames, filenames in os.walk(root):
+                rel = os.path.relpath(dirpath, root)
+                depth = 0 if rel == "." else rel.count(os.sep) + 1
+                if depth > max_depth:
+                    dirnames[:] = []
+                    continue
+
+                dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith(".")]
+
+                for file_name in filenames:
+                    if file_name not in compose_names:
+                        continue
+                    file_path = os.path.join(dirpath, file_name)
+                    project_name = self._compose_project_name_from_file(file_path)
+
+                    if project_name not in discovered:
+                        discovered[project_name] = file_path
+                    else:
+                        # Collision fallback: keep both with deterministic suffix.
+                        suffix = os.path.basename(os.path.dirname(file_path))
+                        alt_name = f"{project_name}@{suffix}"
+                        if alt_name not in discovered:
+                            discovered[alt_name] = file_path
+        return discovered
 
     @docker_safe(default_return=["Docker not connected"])
     def get_logs(self, container_id: str, tail: int = 50) -> List[str]:
@@ -270,7 +354,9 @@ class DockerBackend:
         self.client.containers.get(container_id).rename(new_name)
 
     @docker_safe(default_return=None)
-    def commit_container(self, container_id: str, repository: str, tag: str = None):
+    def commit_container(
+        self, container_id: str, repository: str, tag: Optional[str] = None
+    ):
         if not self.client or not repository: return
         self.client.containers.get(container_id).commit(repository=repository, tag=tag)
 
@@ -313,12 +399,18 @@ class DockerBackend:
         
         c.put_archive(path=dest_path, data=tar_stream)
 
-    def remove_image(self, image_id: str):
-        if not self.client: return
+    def remove_image(self, image_id: str) -> bool:
+        if not self.client:
+            return False
         try:
             self.client.images.get(image_id).remove(force=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove image {image_id}: {e}", exc_info=True)
+            return False
+        finally:
+            # Ensure next fetch reflects current Docker state.
             cache_manager.invalidate("images")
-        except: pass
 
     def save_image(self, image_id: str, file_path: str):
         if not self.client or not file_path: return
@@ -354,7 +446,7 @@ class DockerBackend:
         self.client.networks.prune()
         cache_manager.invalidate()  # Invalidate all caches as prune affects everything
 
-    def run_container(self, image_id: str, name: str = None):
+    def run_container(self, image_id: str, name: Optional[str] = None):
         if not self.client: return
         if name:
             self.client.containers.run(image_id, detach=True, name=name)
@@ -365,7 +457,7 @@ class DockerBackend:
         if not self.client: return
         self.client.volumes.create(name=name)
 
-    def _get_source_path(self) -> str:
+    def _get_source_path(self) -> Optional[str]:
         try:
             # Assuming installed at $INSTALL_DIR/tockerdui/backend.py
             # We want $INSTALL_DIR/source_path
@@ -394,7 +486,9 @@ class DockerBackend:
         parts = [p.strip() for p in config_files.split(",") if p.strip()]
         return parts
 
-    def _build_compose_command(self, project_name: str, config_files: str, args: List[str]) -> Tuple[List[str], str]:
+    def _build_compose_command(
+        self, project_name: str, config_files: str, args: List[str]
+    ) -> Tuple[List[str], Optional[str]]:
         cmd = ["docker", "compose", "-p", project_name]
         files = self._parse_compose_files(config_files)
         for path in files:
@@ -439,7 +533,7 @@ class DockerBackend:
             return True, (result.stdout or "Compose started").strip()
         except Exception as e:
             logger.error(f"Compose up failed: {e}", exc_info=True)
-            return None
+            return False, str(e)
     
     def compose_down(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Stop and remove services for a Docker Compose project."""
@@ -452,7 +546,7 @@ class DockerBackend:
             return True, (result.stdout or "Compose stopped").strip()
         except Exception as e:
             logger.error(f"Compose down failed: {e}", exc_info=True)
-            return None
+            return False, str(e)
     
     def compose_remove(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Remove services, volumes, and networks for a Docker Compose project."""
@@ -465,7 +559,7 @@ class DockerBackend:
             return True, (result.stdout or "Compose removed").strip()
         except Exception as e:
             logger.error(f"Compose remove failed: {e}", exc_info=True)
-            return None
+            return False, str(e)
     
     def compose_pause(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
         """Pause services for a Docker Compose project."""
@@ -478,7 +572,7 @@ class DockerBackend:
             return True, (result.stdout or "Compose paused").strip()
         except Exception as e:
             logger.error(f"Compose pause failed: {e}", exc_info=True)
-            return None
+            return False, str(e)
 
     def perform_update(self):
         try:

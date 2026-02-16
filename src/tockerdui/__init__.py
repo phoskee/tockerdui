@@ -45,13 +45,13 @@ def get_log_path() -> str:
         str: Absolute path to log file (/tmp/tockerdui.log as fallback)
     """
     # Try XDG_DATA_HOME first (Linux/macOS)
-    xdg_data_home = os.environ.get('XDG_DATA_HOME')
-    if not xdg_data_home:
+    xdg_data_home_env = os.environ.get('XDG_DATA_HOME')
+    if not xdg_data_home_env:
         # Default fallback: ~/.local/share
         home = Path.home()
         xdg_data_home = home / '.local' / 'share'
     else:
-        xdg_data_home = Path(xdg_data_home)
+        xdg_data_home = Path(xdg_data_home_env)
     
     log_dir = xdg_data_home / 'tockerdui' / 'logs'
     

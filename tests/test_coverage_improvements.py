@@ -237,9 +237,58 @@ class TestComposeActions:
         mock_run.side_effect = subprocess.CalledProcessError(1, "docker compose")
         
         backend = DockerBackend()
-        # Should not crash, returns None
+        # Should not crash, returns a failed result tuple
         result = backend.compose_up("badproject")
-        assert result is None
+        assert result[0] is False
+
+    @patch("tockerdui.backend.docker.from_env")
+    def test_get_composes_includes_discovered_inactive(self, mock_docker_env):
+        """Projects discovered on disk should appear as inactive if not running."""
+        cache_manager.invalidate("composes")
+        mock_client = MagicMock()
+        mock_docker_env.return_value = mock_client
+        mock_client.containers.list.return_value = []
+
+        backend = DockerBackend()
+        with patch.object(
+            backend,
+            "_discover_compose_projects",
+            return_value={"myproj": "/tmp/myproj/docker-compose.yml"},
+        ):
+            result = backend.get_composes()
+
+        assert len(result) == 1
+        assert result[0].name == "myproj"
+        assert result[0].status == "inactive"
+        assert result[0].config_files == "/tmp/myproj/docker-compose.yml"
+
+    @patch("tockerdui.backend.docker.from_env")
+    def test_get_composes_merges_running_with_discovered_path(self, mock_docker_env):
+        """Running projects with missing config file should use discovered path."""
+        cache_manager.invalidate("composes")
+        mock_client = MagicMock()
+        mock_docker_env.return_value = mock_client
+
+        c = MagicMock()
+        c.labels = {
+            "com.docker.compose.project": "myproj",
+            "com.docker.compose.project.config_files": "n/a",
+        }
+        c.status = "running"
+        mock_client.containers.list.return_value = [c]
+
+        backend = DockerBackend()
+        with patch.object(
+            backend,
+            "_discover_compose_projects",
+            return_value={"myproj": "/workspace/myproj/compose.yaml"},
+        ):
+            result = backend.get_composes()
+
+        assert len(result) == 1
+        assert result[0].name == "myproj"
+        assert result[0].status == "running"
+        assert result[0].config_files == "/workspace/myproj/compose.yaml"
 
 
 class TestStateManagerFiltering:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import shutil
 import subprocess
 import time
 from typing import Any, Optional
@@ -11,10 +13,11 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Footer, Header, Input, Static, Tab, Tabs
 from rich.markup import escape as rich_escape
 
 from .backend import DockerBackend
+from .cache import cache_manager
 from .config import config_manager
 from .stats import StatsCollector
 
@@ -66,41 +69,50 @@ class InputScreen(ModalScreen[Optional[str]]):
 
 
 class ActionMenuScreen(ModalScreen[Optional[str]]):
+    BINDINGS = [
+        Binding("up", "move_up", "Up", show=False),
+        Binding("down", "move_down", "Down", show=False),
+        Binding("enter", "select", "Select", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
     def __init__(self, title: str, options: list[tuple[str, str]]) -> None:
         super().__init__()
-        self.title = title
+        self.menu_title = title
         self.options = options
         self.index = 0
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static(self.title, classes="modal_title"),
+            Static(self.menu_title, classes="modal_title"),
             Static("", id="menu_options", classes="modal_body"),
             Static("[Up/Down] Move  [Enter] Select  [Esc] Cancel", classes="modal_hint"),
             id="modal",
         )
 
     def on_mount(self) -> None:
-        self._render()
+        self._render_options()
 
-    def _render(self) -> None:
+    def _render_options(self) -> None:
         lines = []
         for idx, (label, key) in enumerate(self.options):
             marker = ">" if idx == self.index else " "
             lines.append(f"{marker} {label} ({key})")
         self.query_one("#menu_options", Static).update("\n".join(lines))
 
-    async def on_key(self, event: events.Key) -> None:
-        if event.key == "up":
-            self.index = (self.index - 1) % len(self.options)
-            self._render()
-        elif event.key == "down":
-            self.index = (self.index + 1) % len(self.options)
-            self._render()
-        elif event.key == "enter":
-            self.dismiss(self.options[self.index][1])
-        elif event.key == "escape":
-            self.dismiss(None)
+    def action_move_up(self) -> None:
+        self.index = (self.index - 1) % len(self.options)
+        self._render_options()
+
+    def action_move_down(self) -> None:
+        self.index = (self.index + 1) % len(self.options)
+        self._render_options()
+
+    def action_select(self) -> None:
+        self.dismiss(self.options[self.index][1])
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 class TockerTextualApp(App[None]):
@@ -120,21 +132,60 @@ class TockerTextualApp(App[None]):
     }
 
     #main {
+      layout: vertical;
+      height: 1fr;
+    }
+
+    #top {
       height: 1fr;
     }
 
     #list {
       width: 58%;
+      height: 1fr;
       border: round $accent;
       padding: 0 1;
       overflow: auto;
     }
 
-    #details {
+    #info {
       width: 42%;
+      height: 1fr;
       border: round $accent;
       padding: 0 1;
       overflow: auto;
+    }
+
+    #logs {
+      height: 2fr;
+      border: round $accent;
+      padding: 0 1;
+      overflow: auto;
+    }
+
+    Screen.narrow #list {
+      width: 100%;
+      height: 1fr;
+    }
+
+    Screen.narrow #info {
+      display: none;
+    }
+
+    Screen.compact #logs {
+      display: none;
+    }
+
+    Screen.compact #top {
+      height: 1fr;
+    }
+
+    Screen.no-logs #logs {
+      display: none;
+    }
+
+    Screen.no-logs #top {
+      height: 1fr;
     }
 
     #status {
@@ -169,12 +220,12 @@ class TockerTextualApp(App[None]):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("1", "tab_containers", "Containers"),
-        Binding("2", "tab_images", "Images"),
-        Binding("3", "tab_volumes", "Volumes"),
-        Binding("4", "tab_networks", "Networks"),
-        Binding("5", "tab_compose", "Compose"),
-        Binding("6", "tab_stats", "Stats"),
+        Binding("1", "tab_containers", "Containers", show=False),
+        Binding("2", "tab_images", "Images", show=False),
+        Binding("3", "tab_volumes", "Volumes", show=False),
+        Binding("4", "tab_networks", "Networks", show=False),
+        Binding("5", "tab_compose", "Compose", show=False),
+        Binding("6", "tab_stats", "Stats", show=False),
         Binding("up", "up", "Up"),
         Binding("down", "down", "Down"),
         Binding("pageup", "page_up", "Page Up"),
@@ -222,22 +273,53 @@ class TockerTextualApp(App[None]):
 
         self._last_containers = 0.0
         self._last_others = 0.0
+        self._force_refresh = True
+        self._refresh_in_flight = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Static("", id="tabs")
-        yield Horizontal(
-            Static("", id="list"),
-            Static("", id="details"),
+        yield Tabs(
+            Tab("CONTAINERS", id="containers"),
+            Tab("IMAGES", id="images"),
+            Tab("VOLUMES", id="volumes"),
+            Tab("NETWORKS", id="networks"),
+            Tab("COMPOSE", id="compose"),
+            Tab("STATS", id="stats"),
+            id="tabs",
+        )
+        yield Vertical(
+            Horizontal(
+                Static("", id="list", markup=False),
+                Static("", id="info", markup=False),
+                id="top",
+            ),
+            Static("", id="logs", markup=False),
             id="main",
         )
-        yield Static("", id="status")
+        yield Static("", id="status", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
         self.set_interval(0.25, self._tick)
-        self._refresh_all(force=True)
+        self._apply_responsive_layout()
+        self.query_one("#tabs", Tabs).active = self.selected_tab
+        self._apply_panel_mode()
         self._render()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._apply_responsive_layout()
+        self._apply_panel_mode()
+        self._normalize_selection()
+        self._render()
+
+    def _apply_responsive_layout(self) -> None:
+        # Small terminals: hide logs and stack panes to preserve selection visibility.
+        self.set_class(self.size.width < 120, "narrow")
+        self.set_class(self.size.height < 26, "compact")
+
+    def _apply_panel_mode(self) -> None:
+        # Logs are meaningful only for containers; hide panel in other tabs.
+        self.set_class(self.selected_tab != "containers", "no-logs")
 
     def _get_tab_items(self, tab: Optional[str] = None) -> list[Any]:
         tab = tab or self.selected_tab
@@ -298,40 +380,42 @@ class TockerTextualApp(App[None]):
             return
         self.selected_index = max(0, min(self.selected_index, len(items) - 1))
 
-    def _refresh_all(self, force: bool = False) -> None:
+    async def _refresh_all(self, force: bool = False) -> None:
         now = time.monotonic()
 
         if force or now - self._last_containers >= 1.0:
-            self.containers = self.backend.get_containers()
-            self.self_usage = self.backend.get_self_usage()
+            containers_task = asyncio.to_thread(self.backend.get_containers)
+            usage_task = asyncio.to_thread(self.backend.get_self_usage)
+            self.containers, self.self_usage = await asyncio.gather(
+                containers_task, usage_task
+            )
             self._last_containers = now
 
         if force or now - self._last_others >= 5.0:
-            self.images = self.backend.get_images()
-            self.volumes = self.backend.get_volumes()
-            self.networks = self.backend.get_networks()
-            self.composes = self.backend.get_composes()
+            (
+                self.images,
+                self.volumes,
+                self.networks,
+                self.composes,
+            ) = await asyncio.gather(
+                asyncio.to_thread(self.backend.get_images),
+                asyncio.to_thread(self.backend.get_volumes),
+                asyncio.to_thread(self.backend.get_networks),
+                asyncio.to_thread(self.backend.get_composes),
+            )
             self._last_others = now
+
+        self._normalize_selection()
 
         if self.selected_tab == "containers":
             selected = self._selected_item()
             if selected:
-                self.logs = self.backend.get_logs(selected.id, tail=100)
-
-        self._normalize_selection()
+                self.logs = await asyncio.to_thread(
+                    self.backend.get_logs, selected.id, 100
+                )
 
     def _set_message(self, message: str) -> None:
         self.message = message
-
-    def _format_tabs(self) -> str:
-        labels = []
-        for idx, tab in enumerate(self.TABS, start=1):
-            label = tab.upper()
-            if tab == self.selected_tab:
-                labels.append(f"[{idx}:{label}]")
-            else:
-                labels.append(f" {idx}:{label} ")
-        return " ".join(labels)
 
     def _row(self, tab: str, item: Any) -> str:
         if tab == "containers":
@@ -391,7 +475,7 @@ class TockerTextualApp(App[None]):
             )
 
         items = self._get_tab_items()
-        list_height = max(8, self.query_one("#list", Static).size.height - 3)
+        list_height = max(1, self.query_one("#list", Static).size.height - 3)
         if self.selected_index < self.scroll_offset:
             self.scroll_offset = self.selected_index
         elif self.selected_index >= self.scroll_offset + list_height:
@@ -419,9 +503,9 @@ class TockerTextualApp(App[None]):
 
         return "\n".join(lines)
 
-    def _render_details(self) -> str:
+    def _render_info(self) -> str:
         if self.selected_tab == "stats":
-            return "Use tabs 1-6 and Enter for actions."
+            return "Use tabs and Enter for actions."
 
         selected = self._selected_item()
         if not selected:
@@ -433,11 +517,7 @@ class TockerTextualApp(App[None]):
                 f"Name: {selected.name}",
                 f"Status: {selected.status}",
                 f"Image: {selected.image}",
-                "",
-                "Logs:",
-                "-" * 40,
             ]
-            details.extend(self.logs[-60:])
             return "\n".join(details)
 
         if self.selected_tab == "images":
@@ -477,20 +557,38 @@ class TockerTextualApp(App[None]):
             ]
         )
 
+    def _render_logs(self) -> str:
+        if self.selected_tab != "containers":
+            return "Logs are available in CONTAINERS tab."
+        if not self.logs:
+            return "(no logs)"
+        return "\n".join(self.logs[-200:])
+
     def _render_status(self) -> str:
         filter_part = f"FILTER: {self.filter_text}" if self.is_filtering else ""
         bulk_part = "BULK ON" if self.bulk_select_mode else "BULK OFF"
         return f"{bulk_part}  {filter_part}  {self.message}".strip()
 
     def _render(self) -> None:
-        self.query_one("#tabs", Static).update(rich_escape(self._format_tabs()))
+        tabs = self.query_one("#tabs", Tabs)
+        if tabs.active != self.selected_tab:
+            tabs.active = self.selected_tab
         self.query_one("#list", Static).update(rich_escape(self._render_list()))
-        self.query_one("#details", Static).update(rich_escape(self._render_details()))
+        self.query_one("#info", Static).update(rich_escape(self._render_info()))
+        self.query_one("#logs", Static).update(rich_escape(self._render_logs()))
         self.query_one("#status", Static).update(rich_escape(self._render_status()))
 
-    def _tick(self) -> None:
-        self._refresh_all()
-        self._render()
+    async def _tick(self) -> None:
+        if self._refresh_in_flight:
+            return
+        self._refresh_in_flight = True
+        try:
+            force = self._force_refresh
+            self._force_refresh = False
+            await self._refresh_all(force=force)
+            self._render()
+        finally:
+            self._refresh_in_flight = False
 
     async def _confirm(self, question: str) -> bool:
         result = await self.push_screen_wait(ConfirmScreen(question))
@@ -503,12 +601,45 @@ class TockerTextualApp(App[None]):
     async def _choose_action(self, options: list[tuple[str, str]]) -> Optional[str]:
         return await self.push_screen_wait(ActionMenuScreen("Actions", options))
 
-    def _run_external(self, cmd: Any, shell: bool = False) -> None:
+    def _run_external(self, cmd: list[str], pager: bool = False) -> None:
         try:
             with self.suspend():
-                subprocess.call(cmd, shell=shell)
+                if pager and shutil.which("less"):
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                    )
+                    if proc.stdout is None:
+                        subprocess.call(cmd)
+                    else:
+                        less_proc = subprocess.Popen(["less", "-R"], stdin=proc.stdout)
+                        proc.stdout.close()
+                        less_proc.wait()
+                        return_code = proc.wait()
+                        if return_code != 0:
+                            self._set_message(
+                                f"Command failed (exit {return_code}): {' '.join(cmd[:3])}"
+                            )
+                else:
+                    return_code = subprocess.call(cmd)
+                    if return_code != 0:
+                        self._set_message(
+                            f"Command failed (exit {return_code}): {' '.join(cmd[:3])}"
+                        )
         except Exception as exc:
             self._set_message(f"Error: {exc}")
+
+    def _compose_result_message(
+        self, action: str, project_name: str, result: tuple[bool, str]
+    ) -> str:
+        ok, msg = result
+        if msg:
+            return msg
+        if ok:
+            return f"Compose {action} succeeded for '{project_name}'"
+        return f"Compose {action} failed for '{project_name}'"
 
     async def _dispatch_bulk_action(self, key: str) -> bool:
         selected_ids = sorted(self.bulk_selected.get(self.selected_tab, set()))
@@ -540,9 +671,14 @@ class TockerTextualApp(App[None]):
 
         if self.selected_tab == "images":
             if key == "d" and await self._confirm(f"Remove {len(selected_ids)} images?"):
+                failures = 0
                 for iid in selected_ids:
-                    self.backend.remove_image(iid)
-                self._set_message(f"Removed {len(selected_ids)} images")
+                    if not self.backend.remove_image(iid):
+                        failures += 1
+                msg = f"Removed {len(selected_ids) - failures}/{len(selected_ids)} images"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
                 return True
             if key == "p" and await self._confirm("Prune unused Docker resources?"):
                 self.backend.prune_all()
@@ -562,23 +698,43 @@ class TockerTextualApp(App[None]):
             return True
 
         if self.selected_tab == "compose":
+            failures = 0
             if key == "U":
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    self.backend.compose_up(name, comp.config_files if comp else "")
-                self._set_message(f"Started {len(selected_ids)} compose projects")
+                    ok, _ = self.backend.compose_up(name, comp.config_files if comp else "")
+                    if not ok:
+                        failures += 1
+                msg = f"Started {len(selected_ids)} compose projects"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
                 return True
             if key == "D" and await self._confirm(f"Stop {len(selected_ids)} compose projects?"):
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    self.backend.compose_down(name, comp.config_files if comp else "")
-                self._set_message(f"Stopped {len(selected_ids)} compose projects")
+                    ok, _ = self.backend.compose_down(
+                        name, comp.config_files if comp else ""
+                    )
+                    if not ok:
+                        failures += 1
+                msg = f"Stopped {len(selected_ids)} compose projects"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
                 return True
             if key == "r" and await self._confirm(f"Remove {len(selected_ids)} compose projects?"):
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    self.backend.compose_remove(name, comp.config_files if comp else "")
-                self._set_message(f"Removed {len(selected_ids)} compose projects")
+                    ok, _ = self.backend.compose_remove(
+                        name, comp.config_files if comp else ""
+                    )
+                    if not ok:
+                        failures += 1
+                msg = f"Removed {len(selected_ids)} compose projects"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
                 return True
 
         return False
@@ -627,7 +783,7 @@ class TockerTextualApp(App[None]):
                 self._run_external(["docker", "exec", "-it", item.id, "/bin/bash"])
                 return True
             if key == "l":
-                self._run_external(f"docker logs {item.id} 2>&1 | less -R", shell=True)
+                self._run_external(["docker", "logs", item.id], pager=True)
                 return True
 
         if tab == "images":
@@ -637,6 +793,7 @@ class TockerTextualApp(App[None]):
                 tag = await self._input("Tag (e.g. myimage:latest)")
                 if tag:
                     self._run_external(["docker", "build", "-t", tag, path])
+                    cache_manager.invalidate("images")
                     return True
             if key == "L":
                 path = await self._input("Load image file (.tar)")
@@ -649,6 +806,7 @@ class TockerTextualApp(App[None]):
                     tag = item.tags[0] if item.tags else ""
                     if tag and tag != "<none>":
                         self._run_external(["docker", "pull", tag])
+                        cache_manager.invalidate("images")
                         return True
                 if key == "R":
                     name = await self._input("Container name (optional)")
@@ -660,7 +818,7 @@ class TockerTextualApp(App[None]):
                         self.backend.save_image(item.id, path)
                         return True
                 if key == "H":
-                    self._run_external(f"docker history {item.id} | less", shell=True)
+                    self._run_external(["docker", "history", item.id], pager=True)
                     return True
 
         if tab == "volumes":
@@ -672,35 +830,46 @@ class TockerTextualApp(App[None]):
 
         if tab == "compose" and item:
             if key == "U":
-                self.backend.compose_up(item.name, item.config_files)
+                result = self.backend.compose_up(item.name, item.config_files)
+                self._set_message(self._compose_result_message("up", item.name, result))
                 return True
             if key == "D":
-                self.backend.compose_down(item.name, item.config_files)
+                result = self.backend.compose_down(item.name, item.config_files)
+                self._set_message(self._compose_result_message("down", item.name, result))
                 return True
             if key in ("r", "R"):
-                self.backend.compose_remove(item.name, item.config_files)
+                result = self.backend.compose_remove(item.name, item.config_files)
+                self._set_message(
+                    self._compose_result_message("remove", item.name, result)
+                )
                 return True
             if key == "P":
-                self.backend.compose_pause(item.name, item.config_files)
+                result = self.backend.compose_pause(item.name, item.config_files)
+                self._set_message(
+                    self._compose_result_message("pause", item.name, result)
+                )
                 return True
 
         if key == "i" and item:
-            cmd_type = "container"
-            if tab == "images":
-                cmd_type = "image"
-            elif tab == "volumes":
-                cmd_type = "volume"
-            elif tab == "networks":
-                cmd_type = "network"
             item_id = self._item_id(tab, item)
-            self._run_external(f"docker inspect {cmd_type} {item_id} | less", shell=True)
+            inspect_cmd = ["docker", "container", "inspect", item_id]
+            if tab == "images":
+                inspect_cmd = ["docker", "image", "inspect", item_id]
+            elif tab == "volumes":
+                inspect_cmd = ["docker", "volume", "inspect", item_id]
+            elif tab == "networks":
+                inspect_cmd = ["docker", "network", "inspect", item_id]
+            self._run_external(inspect_cmd, pager=True)
             return True
 
         if key == "d" and item and await self._confirm(f"Delete {tab[:-1]}?"):
             if tab == "containers":
                 self.backend.remove_container(item.id)
             elif tab == "images":
-                self.backend.remove_image(item.id)
+                removed = self.backend.remove_image(item.id)
+                if not removed:
+                    self._set_message("Failed to remove image")
+                    return False
             elif tab == "volumes":
                 self.backend.remove_volume(item.name)
             elif tab == "networks":
@@ -721,9 +890,17 @@ class TockerTextualApp(App[None]):
             handled = await self._dispatch_single_action(key)
 
         if handled:
-            self._refresh_all(force=True)
+            self._force_refresh = True
 
-    async def action_open_menu(self) -> None:
+    def action_open_menu(self) -> None:
+        self.run_worker(
+            self._open_menu_flow(),
+            group="user-action",
+            exclusive=True,
+            thread=False,
+        )
+
+    async def _open_menu_flow(self) -> None:
         if self.selected_tab == "stats":
             return
 
@@ -778,8 +955,14 @@ class TockerTextualApp(App[None]):
         self.filter_text = ""
         self.is_filtering = False
         self.bulk_select_mode = False
-        self._refresh_all(force=True)
+        self._apply_panel_mode()
+        self._force_refresh = True
         self._render()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        tab_id = event.tab.id
+        if tab_id in self.TABS and tab_id != self.selected_tab:
+            self._set_tab(tab_id)
 
     def action_up(self) -> None:
         items = self._get_tab_items()
@@ -862,7 +1045,7 @@ class TockerTextualApp(App[None]):
 
     async def on_key(self, event: events.Key) -> None:
         # Prefer configured keybindings for quit/help/filter/toggle actions.
-        if config_manager.is_key_binding(event.key, "quit"):
+        if not self.is_filtering and config_manager.is_key_binding(event.key, "quit"):
             self.exit()
             return
 
@@ -896,8 +1079,12 @@ class TockerTextualApp(App[None]):
 
         if event.character:
             if event.character in ["B", "L"] and self.selected_tab == "images":
-                await self._dispatch_user_action(event.character)
-                self._render()
+                self.run_worker(
+                    self._run_user_action_flow(event.character),
+                    group="user-action",
+                    exclusive=True,
+                    thread=False,
+                )
                 event.stop()
                 return
 
@@ -905,9 +1092,26 @@ class TockerTextualApp(App[None]):
                 "s", "t", "r", "z", "n", "k", "x", "l", "i", "d", "p", "R", "S", "H", "C", "U", "D", "P"
             }
             if event.character in direct_keys:
-                await self._dispatch_user_action(event.character)
-                self._render()
+                self.run_worker(
+                    self._run_user_action_flow(event.character),
+                    group="user-action",
+                    exclusive=True,
+                    thread=False,
+                )
                 event.stop()
+
+    async def _run_user_action_flow(self, key: str) -> None:
+        await self._dispatch_user_action(key)
+        self._render()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        # If a modal screen is active, app-level bindings must not steal keys.
+        if len(self.screen_stack) > 1:
+            return False
+        # While filtering, disable all action bindings and let on_key manage text input.
+        if self.is_filtering:
+            return False
+        return True
 
 
 def run() -> None:
