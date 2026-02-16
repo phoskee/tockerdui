@@ -1,6 +1,6 @@
 # 🐳 tockerdui
 
-**tockerdui** is a lightweight, fast, and entirely terminal-based alternative to Docker Desktop. Manage your containers, images, volumes, and networks with the speed of your keyboard.
+**tockerdui** is a lightweight, fast, and entirely terminal-based alternative to Docker Desktop, powered by **Textual**. Manage your containers, images, volumes, and networks with the speed of your keyboard.
 
 > **The Story**: tockerdui was born out of the frustration of having to run dozens of Docker CLI commands to get an overview, often receiving fragmented information that is difficult to read quickly. It is designed for those who want the power of Docker without having to memorize every CLI flag, and for all those environments (headless servers, remote SSH connections, resource-constrained systems) where Docker Desktop is not available or its GUI is too heavy.
 

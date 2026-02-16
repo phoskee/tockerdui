@@ -91,7 +91,7 @@ fi
 
 # Run Application
 export PYTHONPATH="$INSTALL_DIR"
-"$INSTALL_DIR/venv/bin/python3" -m tockerdui.main "\$@"
+"$INSTALL_DIR/venv/bin/python3" -m tockerdui "\$@"
 EOF
 
 chmod +x "$BIN_DIR/tockerdui"

@@ -33,4 +33,4 @@ export TOCKERDUI_DEBUG="${TOCKERDUI_DEBUG:-1}"
 export PYTHONUNBUFFERED=1
 
 echo "Starting tockerdui (debug mode)..."
-exec python -m tockerdui.main "$@"
+exec python -m tockerdui "$@"

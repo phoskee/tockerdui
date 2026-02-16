@@ -1,7 +1,7 @@
 """
 tockerdui - A lightweight Terminal User Interface (TUI) for Docker management.
 
-This module provides a curses-based alternative to Docker Desktop with an intuitive
+This module provides a Textual-based alternative to Docker Desktop with an intuitive
 keyboard-driven interface for managing containers, images, volumes, networks, and 
 Docker Compose projects.
 
@@ -14,10 +14,9 @@ Features:
   - Instant filtering and search
 
 Main Components:
-  - main.py: Event loop and UI orchestration
+  - textual_app.py: Textual app, event loop, and UI orchestration
   - backend.py: Docker API wrapper
-  - state.py: Thread-safe state management and workers
-  - ui.py: Curses rendering engine
+  - state.py: Legacy state/worker module retained for compatibility and tests
   - model.py: Data structures (Container, Image, Volume, etc.)
 
 Usage:
@@ -25,8 +24,8 @@ Usage:
 
 Dependencies:
   - docker>=7.0.0
+  - textual>=0.58.0
   - Python 3.10+
-  - curses (built-in, not available on Windows natively)
 """
 
 import os

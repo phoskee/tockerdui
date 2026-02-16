@@ -15,11 +15,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
-    "Environment :: Console :: Curses",
+    "Environment :: Console",
 ]
 dependencies = [
     "docker>=7.0.0",
     "PyYAML>=6.0.0",
+    "textual>=0.58.0",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,7 @@ dev = [
 "Bug Tracker" = "https://github.com/phoskee/tockerdui/issues"
 
 [project.scripts]
-tockerdui = "tockerdui.main:main"
+tockerdui = "tockerdui.textual_app:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
