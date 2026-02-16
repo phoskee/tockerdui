@@ -583,7 +583,7 @@ def action_menu(stdscr, cy, cx, tab, item_id, bulk_mode=False):
         if bulk_mode:
             actions = [("Up All", "U"), ("Down All", "D"), ("Remove All", "r")]
         else:
-            actions = [("Up", "U"), ("Down", "D"), ("Restart", "r"), ("Pull", "P")]
+            actions = [("Up", "U"), ("Down", "D"), ("Remove", "r"), ("Pause", "P")]
 
     if not actions: return None
 

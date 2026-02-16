@@ -148,7 +148,7 @@ def handle_compose_action(key: str, item_id: str, backend: DockerBackend,
             message = msg if msg else (f"Compose project '{item_id}' is stopping..." if ok else f"Compose down failed for '{item_id}'")
             state_mgr.set_message(message)
         action_taken = True
-    elif key == 'R':
+    elif key in ('R', 'r'):
         result = backend.compose_remove(item_id, config_files)
         if result is None:
             state_mgr.set_message(f"Compose remove failed for '{item_id}'")

@@ -211,7 +211,19 @@ class ConfigManager:
     def is_key_binding(self, key: str, action: str) -> bool:
         """Check if key matches the binding for action."""
         binding = self.get_key_binding(action)
-        return key == binding
+        if not binding:
+            return False
+
+        # Support symbolic names in config for non-printable keys.
+        aliases = {
+            "space": " ",
+            "tab": "\t",
+            "enter": "\n",
+        }
+        normalized = aliases.get(str(binding).lower(), binding)
+        if normalized == "\n" and key == "\r":
+            return True
+        return key == normalized
     
     def get_log_level(self) -> str:
         """Get configured log level."""

@@ -31,6 +31,24 @@ cd tockerdui
 
 This will install the application in `~/.local/share/tockerdui` and create a symbolic link in `~/.local/bin`. Ensure that `~/.local/bin` is in your PATH.
 
+## 🧪 Local Dev / Debug (No Global Install)
+
+To bootstrap and run locally for debugging (venv + dependencies + start app):
+
+```bash
+./dev.sh
+```
+
+Useful options:
+
+```bash
+# Skip dev dependencies
+INSTALL_DEV_DEPS=0 ./dev.sh
+
+# Use a custom venv path
+VENV_DIR=.venv ./dev.sh
+```
+
 ## 🔄 Updating
 
 To update the application to the latest version:

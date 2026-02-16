@@ -40,6 +40,7 @@ import select
 from typing import List, Optional
 from .model import AppState, ContainerInfo
 from .backend import DockerBackend
+from .config import config_manager
 
 
 class StateManager:
@@ -355,7 +356,20 @@ class StateManager:
             f_composes = self._get_filtered_list_unlocked("compose")
             
             return AppState(
-                containers=[ContainerInfo(c.id, c.short_id, c.name, c.status, c.image, c.project, c.cpu_percent, c.ram_usage) for c in f_containers],
+                containers=[
+                    ContainerInfo(
+                        c.id,
+                        c.short_id,
+                        c.name,
+                        c.status,
+                        c.image,
+                        c.project,
+                        c.cpu_percent,
+                        c.ram_usage,
+                        getattr(c, "selected", False),
+                    )
+                    for c in f_containers
+                ],
                 images=list(f_images),
                 volumes=list(f_volumes),
                 networks=list(f_networks),
@@ -371,7 +385,11 @@ class StateManager:
                 update_available=self._state.update_available,
                 focused_pane=self._state.focused_pane,
                 logs_scroll_offset=self._state.logs_scroll_offset,
-                self_usage=self._state.self_usage
+                self_usage=self._state.self_usage,
+                last_error=self._state.last_error,
+                error_timestamp=self._state.error_timestamp,
+                bulk_select_mode=self._state.bulk_select_mode,
+                stats_data=dict(self._state.stats_data),
             )
 
     def get_all_containers(self) -> List[ContainerInfo]:
@@ -422,8 +440,8 @@ class ListWorker(threading.Thread):
         container_interval = 1.0
         others_interval = 5.0
         cleanup_interval = 30.0
-        # Check updates once at startup
-        if self.backend.check_for_updates():
+        # Check updates once at startup if enabled in config
+        if config_manager.should_auto_update() and self.backend.check_for_updates():
             self.state_manager.set_update_available(True)
 
         while self.running:
