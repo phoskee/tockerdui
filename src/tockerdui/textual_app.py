@@ -279,6 +279,7 @@ class TockerTextualApp(App[None]):
         self._last_container_stats = 0.0
         self._force_refresh = True
         self._refresh_in_flight = False
+        self._syncing_tabs = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -390,11 +391,21 @@ class TockerTextualApp(App[None]):
         if force or now - self._last_containers >= 1.0:
             containers_task = asyncio.to_thread(self.backend.get_containers)
             usage_task = asyncio.to_thread(self.backend.get_self_usage)
-            self.containers, self.self_usage = await asyncio.gather(
+            new_containers, self.self_usage = await asyncio.gather(
                 containers_task, usage_task
             )
+            # Preserve displayed CPU/MEM between container list refreshes to avoid visual reset/flicker.
+            previous_stats = {
+                c.id: (getattr(c, "cpu_percent", "--"), getattr(c, "ram_usage", "--"))
+                for c in self.containers
+            }
+            for c in new_containers:
+                if c.id in previous_stats:
+                    c.cpu_percent, c.ram_usage = previous_stats[c.id]
+                elif c.status != "running":
+                    c.cpu_percent, c.ram_usage = "0.0%", "0.0MB"
+            self.containers = new_containers
             self._last_containers = now
-            self._last_container_stats = 0.0
 
         if force or now - self._last_container_stats >= 2.0:
             running = [c for c in self.containers if c.status == "running"]
@@ -593,9 +604,6 @@ class TockerTextualApp(App[None]):
         return f"{bulk_part}  {filter_part}  {self.message}".strip()
 
     def _render(self) -> None:
-        tabs = self.query_one("#tabs", Tabs)
-        if tabs.active != self.selected_tab:
-            tabs.active = self.selected_tab
         self.query_one("#list", Static).update(rich_escape(self._render_list()))
         self.query_one("#info", Static).update(rich_escape(self._render_info()))
         self.query_one("#logs", Static).update(rich_escape(self._render_logs()))
@@ -623,6 +631,9 @@ class TockerTextualApp(App[None]):
 
     async def _choose_action(self, options: list[tuple[str, str]]) -> Optional[str]:
         return await self.push_screen_wait(ActionMenuScreen("Actions", options))
+
+    async def _run_backend(self, func: Any, *args: Any) -> Any:
+        return await asyncio.to_thread(func, *args)
 
     def _run_external(self, cmd: list[str], pager: bool = False) -> None:
         try:
@@ -709,22 +720,22 @@ class TockerTextualApp(App[None]):
         if self.selected_tab == "containers":
             if key == "s":
                 for cid in selected_ids:
-                    self.backend.start_container(cid)
+                    await self._run_backend(self.backend.start_container, cid)
                 self._set_message(f"Started {len(selected_ids)} containers")
                 return True
             if key == "t" and await self._confirm(f"Stop {len(selected_ids)} containers?"):
                 for cid in selected_ids:
-                    self.backend.stop_container(cid)
+                    await self._run_backend(self.backend.stop_container, cid)
                 self._set_message(f"Stopped {len(selected_ids)} containers")
                 return True
             if key == "r":
                 for cid in selected_ids:
-                    self.backend.restart_container(cid)
+                    await self._run_backend(self.backend.restart_container, cid)
                 self._set_message(f"Restarted {len(selected_ids)} containers")
                 return True
             if key == "d" and await self._confirm(f"Remove {len(selected_ids)} containers?"):
                 for cid in selected_ids:
-                    self.backend.remove_container(cid)
+                    await self._run_backend(self.backend.remove_container, cid)
                 self._set_message(f"Removed {len(selected_ids)} containers")
                 return True
 
@@ -732,7 +743,7 @@ class TockerTextualApp(App[None]):
             if key == "d" and await self._confirm(f"Remove {len(selected_ids)} images?"):
                 failures = 0
                 for iid in selected_ids:
-                    if not self.backend.remove_image(iid):
+                    if not await self._run_backend(self.backend.remove_image, iid):
                         failures += 1
                 msg = f"Removed {len(selected_ids) - failures}/{len(selected_ids)} images"
                 if failures:
@@ -740,19 +751,19 @@ class TockerTextualApp(App[None]):
                 self._set_message(msg)
                 return True
             if key == "p" and await self._confirm("Prune unused Docker resources?"):
-                self.backend.prune_all()
+                await self._run_backend(self.backend.prune_all)
                 self._set_message("Pruned unused resources")
                 return True
 
         if self.selected_tab == "volumes" and key == "d" and await self._confirm(f"Remove {len(selected_ids)} volumes?"):
             for vid in selected_ids:
-                self.backend.remove_volume(vid)
+                await self._run_backend(self.backend.remove_volume, vid)
             self._set_message(f"Removed {len(selected_ids)} volumes")
             return True
 
         if self.selected_tab == "networks" and key == "d" and await self._confirm(f"Remove {len(selected_ids)} networks?"):
             for nid in selected_ids:
-                self.backend.remove_network(nid)
+                await self._run_backend(self.backend.remove_network, nid)
             self._set_message(f"Removed {len(selected_ids)} networks")
             return True
 
@@ -761,7 +772,9 @@ class TockerTextualApp(App[None]):
             if key == "U":
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    ok, _ = self.backend.compose_up(name, comp.config_files if comp else "")
+                    ok, _ = await self._run_backend(
+                        self.backend.compose_up, name, comp.config_files if comp else ""
+                    )
                     if not ok:
                         failures += 1
                 msg = f"Started {len(selected_ids)} compose projects"
@@ -772,7 +785,8 @@ class TockerTextualApp(App[None]):
             if key == "D" and await self._confirm(f"Stop {len(selected_ids)} compose projects?"):
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    ok, _ = self.backend.compose_down(
+                    ok, _ = await self._run_backend(
+                        self.backend.compose_down,
                         name, comp.config_files if comp else ""
                     )
                     if not ok:
@@ -785,7 +799,8 @@ class TockerTextualApp(App[None]):
             if key == "X":
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    ok, _ = self.backend.compose_restart(
+                    ok, _ = await self._run_backend(
+                        self.backend.compose_restart,
                         name, comp.config_files if comp else ""
                     )
                     if not ok:
@@ -798,7 +813,8 @@ class TockerTextualApp(App[None]):
             if key == "p":
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    ok, _ = self.backend.compose_pull(
+                    ok, _ = await self._run_backend(
+                        self.backend.compose_pull,
                         name, comp.config_files if comp else ""
                     )
                     if not ok:
@@ -811,7 +827,8 @@ class TockerTextualApp(App[None]):
             if key == "r" and await self._confirm(f"Remove {len(selected_ids)} compose projects?"):
                 for name in selected_ids:
                     comp = next((c for c in self.composes if c.name == name), None)
-                    ok, _ = self.backend.compose_remove(
+                    ok, _ = await self._run_backend(
+                        self.backend.compose_remove,
                         name, comp.config_files if comp else ""
                     )
                     if not ok:
@@ -833,36 +850,38 @@ class TockerTextualApp(App[None]):
 
         if tab == "containers" and item:
             if key == "s":
-                self.backend.start_container(item.id)
+                await self._run_backend(self.backend.start_container, item.id)
                 return True
             if key == "t" and await self._confirm("Stop container?"):
-                self.backend.stop_container(item.id)
+                await self._run_backend(self.backend.stop_container, item.id)
                 return True
             if key == "r":
-                self.backend.restart_container(item.id)
+                await self._run_backend(self.backend.restart_container, item.id)
                 return True
             if key == "z":
                 if item.status == "paused":
-                    self.backend.unpause_container(item.id)
+                    await self._run_backend(self.backend.unpause_container, item.id)
                 elif item.status == "running":
-                    self.backend.pause_container(item.id)
+                    await self._run_backend(self.backend.pause_container, item.id)
                 return True
             if key == "n":
                 new_name = await self._input("New Name")
                 if new_name:
-                    self.backend.rename_container(item.id, new_name)
+                    await self._run_backend(self.backend.rename_container, item.id, new_name)
                     return True
             if key == "k":
                 repo = await self._input("Repository")
                 tag = await self._input("Tag (optional)")
                 if repo:
-                    self.backend.commit_container(item.id, repo, tag if tag else None)
+                    await self._run_backend(
+                        self.backend.commit_container, item.id, repo, tag if tag else None
+                    )
                     return True
             if key == "cp":
                 src = await self._input("Source Path")
                 dest = await self._input("Destination Path in container")
                 if src and dest:
-                    self.backend.copy_to_container(item.id, src, dest)
+                    await self._run_backend(self.backend.copy_to_container, item.id, src, dest)
                     return True
             if key == "x":
                 self._run_external(["docker", "exec", "-it", item.id, "/bin/bash"])
@@ -883,7 +902,7 @@ class TockerTextualApp(App[None]):
             if key == "L":
                 path = await self._input("Load image file (.tar)")
                 if path:
-                    self.backend.load_image(path)
+                    await self._run_backend(self.backend.load_image, path)
                     return True
 
             if item:
@@ -895,12 +914,14 @@ class TockerTextualApp(App[None]):
                         return True
                 if key == "R":
                     name = await self._input("Container name (optional)")
-                    self.backend.run_container(item.id, name if name else None)
+                    await self._run_backend(
+                        self.backend.run_container, item.id, name if name else None
+                    )
                     return True
                 if key == "S":
                     path = await self._input("Save image file (.tar)")
                     if path:
-                        self.backend.save_image(item.id, path)
+                        await self._run_backend(self.backend.save_image, item.id, path)
                         return True
                 if key == "H":
                     self._run_external(["docker", "history", item.id], pager=True)
@@ -910,38 +931,50 @@ class TockerTextualApp(App[None]):
             if key == "C":
                 name = await self._input("Volume name")
                 if name:
-                    self.backend.create_volume(name)
+                    await self._run_backend(self.backend.create_volume, name)
                     return True
 
         if tab == "compose" and item:
             if key == "U":
-                result = self.backend.compose_up(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_up, item.name, item.config_files
+                )
                 self._set_message(self._compose_result_message("up", item.name, result))
                 return True
             if key == "D":
-                result = self.backend.compose_down(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_down, item.name, item.config_files
+                )
                 self._set_message(self._compose_result_message("down", item.name, result))
                 return True
             if key in ("r", "R"):
-                result = self.backend.compose_remove(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_remove, item.name, item.config_files
+                )
                 self._set_message(
                     self._compose_result_message("remove", item.name, result)
                 )
                 return True
             if key == "P":
-                result = self.backend.compose_pause(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_pause, item.name, item.config_files
+                )
                 self._set_message(
                     self._compose_result_message("pause", item.name, result)
                 )
                 return True
             if key == "X":
-                result = self.backend.compose_restart(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_restart, item.name, item.config_files
+                )
                 self._set_message(
                     self._compose_result_message("restart", item.name, result)
                 )
                 return True
             if key == "p":
-                result = self.backend.compose_pull(item.name, item.config_files)
+                result = await self._run_backend(
+                    self.backend.compose_pull, item.name, item.config_files
+                )
                 self._set_message(
                     self._compose_result_message("pull", item.name, result)
                 )
@@ -969,20 +1002,20 @@ class TockerTextualApp(App[None]):
 
         if key == "d" and item and await self._confirm(f"Delete {tab[:-1]}?"):
             if tab == "containers":
-                self.backend.remove_container(item.id)
+                await self._run_backend(self.backend.remove_container, item.id)
             elif tab == "images":
-                removed = self.backend.remove_image(item.id)
+                removed = await self._run_backend(self.backend.remove_image, item.id)
                 if not removed:
                     self._set_message("Failed to remove image")
                     return False
             elif tab == "volumes":
-                self.backend.remove_volume(item.name)
+                await self._run_backend(self.backend.remove_volume, item.name)
             elif tab == "networks":
-                self.backend.remove_network(item.id)
+                await self._run_backend(self.backend.remove_network, item.id)
             return True
 
         if key == "P" and await self._confirm("Prune system (all unused)?"):
-            self.backend.prune_all()
+            await self._run_backend(self.backend.prune_all)
             return True
 
         return False
@@ -1060,11 +1093,20 @@ class TockerTextualApp(App[None]):
         self.filter_text = ""
         self.is_filtering = False
         self.bulk_select_mode = False
+        tabs = self.query_one("#tabs", Tabs)
+        if tabs.active != tab:
+            self._syncing_tabs = True
+            try:
+                tabs.active = tab
+            finally:
+                self._syncing_tabs = False
         self._apply_panel_mode()
         self._force_refresh = True
         self._render()
 
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if self._syncing_tabs:
+            return
         tab_id = event.tab.id
         if tab_id in self.TABS and tab_id != self.selected_tab:
             self._set_tab(tab_id)
