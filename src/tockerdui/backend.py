@@ -331,27 +331,38 @@ class DockerBackend:
     @docker_safe(default_return=None)
     def stop_container(self, container_id: str):
         self.client.containers.get(container_id).stop()
+        cache_manager.invalidate("containers")
+        cache_manager.invalidate_container_stats(container_id)
 
     @docker_safe(default_return=None)
     def restart_container(self, container_id: str):
         self.client.containers.get(container_id).restart()
+        cache_manager.invalidate("containers")
+        cache_manager.invalidate_container_stats(container_id)
     
     @docker_safe(default_return=None)
     def pause_container(self, container_id: str):
         self.client.containers.get(container_id).pause()
+        cache_manager.invalidate("containers")
+        cache_manager.invalidate_container_stats(container_id)
 
     @docker_safe(default_return=None)
     def unpause_container(self, container_id: str):
         self.client.containers.get(container_id).unpause()
+        cache_manager.invalidate("containers")
+        cache_manager.invalidate_container_stats(container_id)
 
     @docker_safe(default_return=None)
     def remove_container(self, container_id: str):
         self.client.containers.get(container_id).remove(force=True)
+        cache_manager.invalidate("containers")
+        cache_manager.invalidate_container_stats(container_id)
 
     @docker_safe(default_return=None)
     def rename_container(self, container_id: str, new_name: str):
         if not self.client or not new_name: return
         self.client.containers.get(container_id).rename(new_name)
+        cache_manager.invalidate("containers")
 
     @docker_safe(default_return=None)
     def commit_container(
@@ -359,6 +370,7 @@ class DockerBackend:
     ):
         if not self.client or not repository: return
         self.client.containers.get(container_id).commit(repository=repository, tag=tag)
+        cache_manager.invalidate("images")
 
     @docker_safe(default_return=None)
     def copy_to_container(self, container_id: str, src_path: str, dest_path: str):
@@ -398,6 +410,7 @@ class DockerBackend:
         tar_stream.seek(0)
         
         c.put_archive(path=dest_path, data=tar_stream)
+        cache_manager.invalidate("containers")
 
     def remove_image(self, image_id: str) -> bool:
         if not self.client:
@@ -433,10 +446,12 @@ class DockerBackend:
     def remove_volume(self, volume_name: str):
         v = self.client.volumes.get(volume_name)
         v.remove(force=True)
+        cache_manager.invalidate("volumes")
 
     def remove_network(self, network_id: str):
         n = self.client.networks.get(network_id)
         n.remove()
+        cache_manager.invalidate("networks")
 
     def prune_all(self):
         if not self.client: return
@@ -452,10 +467,12 @@ class DockerBackend:
             self.client.containers.run(image_id, detach=True, name=name)
         else:
             self.client.containers.run(image_id, detach=True)
+        cache_manager.invalidate("containers")
 
     def create_volume(self, name: str):
         if not self.client: return
         self.client.volumes.create(name=name)
+        cache_manager.invalidate("volumes")
 
     def _get_source_path(self) -> Optional[str]:
         try:
@@ -530,6 +547,8 @@ class DockerBackend:
             if result.returncode != 0:
                 return False, (result.stderr or result.stdout or "Compose up failed").strip()
             logging.info(f"Compose project '{project_name}' started successfully")
+            cache_manager.invalidate("containers")
+            cache_manager.invalidate("composes")
             return True, (result.stdout or "Compose started").strip()
         except Exception as e:
             logger.error(f"Compose up failed: {e}", exc_info=True)
@@ -543,6 +562,8 @@ class DockerBackend:
             if result.returncode != 0:
                 return False, (result.stderr or result.stdout or "Compose down failed").strip()
             logging.info(f"Compose project '{project_name}' stopped successfully")
+            cache_manager.invalidate("containers")
+            cache_manager.invalidate("composes")
             return True, (result.stdout or "Compose stopped").strip()
         except Exception as e:
             logger.error(f"Compose down failed: {e}", exc_info=True)
@@ -556,6 +577,10 @@ class DockerBackend:
             if result.returncode != 0:
                 return False, (result.stderr or result.stdout or "Compose remove failed").strip()
             logging.info(f"Compose project '{project_name}' removed successfully")
+            cache_manager.invalidate("containers")
+            cache_manager.invalidate("volumes")
+            cache_manager.invalidate("networks")
+            cache_manager.invalidate("composes")
             return True, (result.stdout or "Compose removed").strip()
         except Exception as e:
             logger.error(f"Compose remove failed: {e}", exc_info=True)
@@ -569,9 +594,40 @@ class DockerBackend:
             if result.returncode != 0:
                 return False, (result.stderr or result.stdout or "Compose pause failed").strip()
             logging.info(f"Compose project '{project_name}' paused successfully")
+            cache_manager.invalidate("containers")
+            cache_manager.invalidate("composes")
             return True, (result.stdout or "Compose paused").strip()
         except Exception as e:
             logger.error(f"Compose pause failed: {e}", exc_info=True)
+            return False, str(e)
+
+    def compose_restart(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
+        """Restart services for a Docker Compose project."""
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["restart"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose restart failed").strip()
+            logging.info(f"Compose project '{project_name}' restarted successfully")
+            cache_manager.invalidate("containers")
+            cache_manager.invalidate("composes")
+            return True, (result.stdout or "Compose restarted").strip()
+        except Exception as e:
+            logger.error(f"Compose restart failed: {e}", exc_info=True)
+            return False, str(e)
+
+    def compose_pull(self, project_name: str, config_files: str = "") -> Tuple[bool, str]:
+        """Pull images for a Docker Compose project."""
+        try:
+            cmd, cwd = self._build_compose_command(project_name, config_files, ["pull"])
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=cwd)
+            if result.returncode != 0:
+                return False, (result.stderr or result.stdout or "Compose pull failed").strip()
+            logging.info(f"Compose project '{project_name}' pulled successfully")
+            cache_manager.invalidate("images")
+            return True, (result.stdout or "Compose pull completed").strip()
+        except Exception as e:
+            logger.error(f"Compose pull failed: {e}", exc_info=True)
             return False, str(e)
 
     def perform_update(self):

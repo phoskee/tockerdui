@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import subprocess
 import time
@@ -238,6 +239,8 @@ class TockerTextualApp(App[None]):
         Binding("d", "select_none", "Select None"),
         Binding("escape", "clear_filter", "Clear Filter"),
         Binding("S", "cycle_sort", "Sort"),
+        Binding("y", "copy_text", "Copy"),
+        Binding("e", "export_view", "Export"),
     ]
 
     TABS = ["containers", "images", "volumes", "networks", "compose", "stats"]
@@ -273,6 +276,7 @@ class TockerTextualApp(App[None]):
 
         self._last_containers = 0.0
         self._last_others = 0.0
+        self._last_container_stats = 0.0
         self._force_refresh = True
         self._refresh_in_flight = False
 
@@ -390,6 +394,25 @@ class TockerTextualApp(App[None]):
                 containers_task, usage_task
             )
             self._last_containers = now
+            self._last_container_stats = 0.0
+
+        if force or now - self._last_container_stats >= 2.0:
+            running = [c for c in self.containers if c.status == "running"]
+            if running:
+                stats = await asyncio.gather(
+                    *[
+                        asyncio.to_thread(self.backend.get_container_stats, c.id)
+                        for c in running
+                    ]
+                )
+                for c, (cpu, ram) in zip(running, stats):
+                    c.cpu_percent = cpu
+                    c.ram_usage = ram
+            for c in self.containers:
+                if c.status != "running":
+                    c.cpu_percent = "0.0%"
+                    c.ram_usage = "0.0MB"
+            self._last_container_stats = now
 
         if force or now - self._last_others >= 5.0:
             (
@@ -631,6 +654,42 @@ class TockerTextualApp(App[None]):
         except Exception as exc:
             self._set_message(f"Error: {exc}")
 
+    def _run_compose_external(self, project_name: str, config_files: str, args: list[str], pager: bool = False) -> None:
+        cmd = ["docker", "compose", "-p", project_name]
+        if config_files and config_files != "n/a":
+            for file_path in [p.strip() for p in config_files.split(",") if p.strip()]:
+                cmd.extend(["-f", file_path])
+        cmd.extend(args)
+        self._run_external(cmd, pager=pager)
+
+    def _current_text_for_copy(self) -> str:
+        if self.selected_tab == "containers":
+            return self._render_logs() or self._render_info()
+        return self._render_info()
+
+    def _copy_to_clipboard(self, text: str) -> bool:
+        if not text.strip():
+            self._set_message("Nothing to copy")
+            return False
+        try:
+            if shutil.which("pbcopy"):
+                subprocess.run(["pbcopy"], input=text, text=True, check=False)
+                return True
+            if shutil.which("xclip"):
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"],
+                    input=text,
+                    text=True,
+                    check=False,
+                )
+                return True
+            if shutil.which("wl-copy"):
+                subprocess.run(["wl-copy"], input=text, text=True, check=False)
+                return True
+        except Exception:
+            return False
+        return False
+
     def _compose_result_message(
         self, action: str, project_name: str, result: tuple[bool, str]
     ) -> str:
@@ -719,6 +778,32 @@ class TockerTextualApp(App[None]):
                     if not ok:
                         failures += 1
                 msg = f"Stopped {len(selected_ids)} compose projects"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
+                return True
+            if key == "X":
+                for name in selected_ids:
+                    comp = next((c for c in self.composes if c.name == name), None)
+                    ok, _ = self.backend.compose_restart(
+                        name, comp.config_files if comp else ""
+                    )
+                    if not ok:
+                        failures += 1
+                msg = f"Restarted {len(selected_ids)} compose projects"
+                if failures:
+                    msg += f" ({failures} failed)"
+                self._set_message(msg)
+                return True
+            if key == "p":
+                for name in selected_ids:
+                    comp = next((c for c in self.composes if c.name == name), None)
+                    ok, _ = self.backend.compose_pull(
+                        name, comp.config_files if comp else ""
+                    )
+                    if not ok:
+                        failures += 1
+                msg = f"Pulled {len(selected_ids)} compose projects"
                 if failures:
                     msg += f" ({failures} failed)"
                 self._set_message(msg)
@@ -849,6 +934,26 @@ class TockerTextualApp(App[None]):
                     self._compose_result_message("pause", item.name, result)
                 )
                 return True
+            if key == "X":
+                result = self.backend.compose_restart(item.name, item.config_files)
+                self._set_message(
+                    self._compose_result_message("restart", item.name, result)
+                )
+                return True
+            if key == "p":
+                result = self.backend.compose_pull(item.name, item.config_files)
+                self._set_message(
+                    self._compose_result_message("pull", item.name, result)
+                )
+                return True
+            if key == "l":
+                self._run_compose_external(
+                    item.name,
+                    item.config_files,
+                    ["logs", "--tail", "200"],
+                    pager=True,
+                )
+                return True
 
         if key == "i" and item:
             item_id = self._item_id(tab, item)
@@ -910,7 +1015,7 @@ class TockerTextualApp(App[None]):
                 "images": [("Remove All", "d"), ("Prune Unused", "p")],
                 "volumes": [("Remove All", "d")],
                 "networks": [("Remove All", "d")],
-                "compose": [("Up All", "U"), ("Down All", "D"), ("Remove All", "r")],
+                "compose": [("Up All", "U"), ("Down All", "D"), ("Restart All", "X"), ("Pull All", "p"), ("Remove All", "r")],
             }
         else:
             options_map = {
@@ -918,7 +1023,7 @@ class TockerTextualApp(App[None]):
                 "images": [("Run", "R"), ("Pull/Update", "p"), ("Save (tar)", "S"), ("Load (tar)", "L"), ("History", "H"), ("Build", "B"), ("Inspect", "i"), ("Delete", "d")],
                 "volumes": [("Create", "C"), ("Inspect", "i"), ("Delete", "d")],
                 "networks": [("Inspect", "i"), ("Delete", "d")],
-                "compose": [("Up", "U"), ("Down", "D"), ("Remove", "r"), ("Pause", "P")],
+                "compose": [("Up", "U"), ("Down", "D"), ("Restart", "X"), ("Pull", "p"), ("Logs", "l"), ("Remove", "r"), ("Pause", "P")],
             }
 
         options = options_map.get(self.selected_tab, [])
@@ -1043,6 +1148,44 @@ class TockerTextualApp(App[None]):
         self.sort_mode = modes[(idx + 1) % len(modes)]
         self._render()
 
+    def action_copy_text(self) -> None:
+        text = self._current_text_for_copy()
+        if self._copy_to_clipboard(text):
+            self._set_message("Copied to clipboard")
+            self._render()
+        else:
+            self._set_message("Clipboard not available (install xclip/wl-clipboard on Linux)")
+            self._render()
+
+    def action_export_view(self) -> None:
+        self.run_worker(
+            self._export_view_flow(),
+            group="user-action",
+            exclusive=True,
+            thread=False,
+        )
+
+    async def _export_view_flow(self) -> None:
+        default_path = os.path.expanduser(f"~/tockerdui-{self.selected_tab}.txt")
+        path = await self._input(f"Export path (default: {default_path})")
+        target = path or default_path
+        content = "\n\n".join(
+            [
+                self._render_list(),
+                "DETAILS",
+                self._render_info(),
+                "LOGS",
+                self._render_logs(),
+            ]
+        )
+        try:
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(content)
+            self._set_message(f"Exported to {target}")
+        except Exception as exc:
+            self._set_message(f"Export failed: {exc}")
+        self._render()
+
     async def on_key(self, event: events.Key) -> None:
         # Prefer configured keybindings for quit/help/filter/toggle actions.
         if not self.is_filtering and config_manager.is_key_binding(event.key, "quit"):
@@ -1089,7 +1232,7 @@ class TockerTextualApp(App[None]):
                 return
 
             direct_keys = {
-                "s", "t", "r", "z", "n", "k", "x", "l", "i", "d", "p", "R", "S", "H", "C", "U", "D", "P"
+                "s", "t", "r", "z", "n", "k", "x", "l", "i", "d", "p", "R", "S", "H", "C", "U", "D", "P", "X"
             }
             if event.character in direct_keys:
                 self.run_worker(
